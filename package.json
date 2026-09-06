@@ -1,0 +1,11 @@
+{
+  "name": "marginal",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter @marginal/app dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "proxy": "node tools/proxy.mjs"
+  }
+}

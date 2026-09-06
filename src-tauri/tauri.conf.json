@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "Marginal",
+  "version": "0.1.0",
+  "identifier": "dev.aiden.marginal",
+  "build": {
+    "frontendDist": "../packages/app/dist",
+    "devUrl": "http://localhost:5199",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [{ "title": "Marginal", "width": 1280, "height": 820 }],
+    "security": { "csp": null }
+  }
+}

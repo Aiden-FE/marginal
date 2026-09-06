@@ -1,0 +1,72 @@
+:root {
+  --bg: #14161a; --panel: #1d2026; --panel2: #23272f; --fg: #e6e2d8; --muted: #9a9a8f;
+  --accent: #d9a441; --danger: #d96a5f; --ok: #7fb069;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); }
+button {
+  background: var(--panel2); color: var(--fg); border: 1px solid #3a3f49; border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; font-size: 13px;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #222; border-color: var(--accent); font-weight: 600; }
+button.danger { color: var(--danger); }
+button:disabled { opacity: .45; cursor: default; }
+input, select, textarea {
+  background: var(--panel2); color: var(--fg); border: 1px solid #3a3f49; border-radius: 6px;
+  padding: 5px 8px; font-size: 13px;
+}
+input[type=checkbox] { accent-color: var(--accent); }
+.layout { display: flex; height: 100vh; }
+.sidebar {
+  width: 190px; background: var(--panel); padding: 14px 10px; display: flex; flex-direction: column; gap: 6px;
+  border-right: 1px solid #2a2e36;
+}
+.sidebar .logo { font-weight: 700; font-size: 16px; padding: 4px 8px 14px; color: var(--accent); }
+.sidebar button { text-align: left; border: none; background: transparent; padding: 8px 10px; border-radius: 6px; }
+.sidebar button.active { background: var(--panel2); color: var(--accent); }
+.main { flex: 1; overflow: auto; padding: 18px 22px; position: relative; }
+.card { background: var(--panel); border: 1px solid #2a2e36; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 12px; }
+.toast {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  background: #2c313a; border: 1px solid var(--accent); color: var(--fg);
+  padding: 8px 18px; border-radius: 8px; z-index: 100; font-size: 13px;
+}
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { background: var(--panel); border: 1px solid #3a3f49; border-radius: 12px; padding: 20px; width: min(760px, 92vw); max-height: 86vh; overflow: auto; }
+table.list { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.list td, table.list th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2a2e36; }
+.badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid #3a3f49; color: var(--muted); }
+.badge.canon { color: var(--accent); border-color: var(--accent); }
+.badge.draft { color: var(--muted); }
+.badge.failed { color: var(--danger); border-color: var(--danger); }
+.queue-panel {
+  position: fixed; right: 16px; bottom: 16px; width: 300px; background: var(--panel);
+  border: 1px solid #3a3f49; border-radius: 10px; padding: 10px 12px; z-index: 40; font-size: 12px;
+}
+.queue-panel .t { display: flex; justify-content: space-between; padding: 3px 0; }
+
+/* ---------- 阅读器 ---------- */
+.reader-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+#reader-viewport {
+  position: relative; height: calc(100vh - 190px); overflow: hidden;
+  background: var(--theme-bg, #f5efdf); border-radius: 10px; border: 1px solid #2a2e36;
+}
+#reader-pages {
+  height: 100%; column-width: var(--page-w); column-gap: var(--page-gap);
+  column-fill: auto; font-size: var(--font-size, 19px); line-height: 1.9;
+  color: var(--theme-fg, #3a3226); padding: 26px 32px; transition: transform .25s ease;
+  will-change: transform;
+}
+#reader-pages p { text-indent: 2em; margin: 0 0 .4em; orphans: 2; widows: 2; cursor: pointer; }
+#reader-pages p:hover { background: rgba(0,0,0,.05); }
+#reader-pages p.sel { background: rgba(217,164,65,.25); }
+#reader-pages img.illus {
+  display: block; width: auto; max-width: 100%; max-height: calc(100vh - 380px);
+  margin: .8em auto; border-radius: 6px; break-inside: avoid;
+}
+#reader-pages .anchor-mark { background: rgba(217,164,65,.55); border-radius: 3px; padding: 0 2px; }
+.tap-zone { position: absolute; top: 0; bottom: 0; width: 15%; z-index: 5; }

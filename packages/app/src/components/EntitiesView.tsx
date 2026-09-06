@@ -1,0 +1,142 @@
+// 实体卡（spec §4.4）：AI 提取 → 逐卡确认/修正 → 正典化；定妆照 AI 生成或上传。
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { buildIllustrationPrompt, sha256Hex, uuidv7, type EntityCard, type Work } from "@marginal/core";
+import { store, useStore } from "../store";
+
+export function EntitiesView({ work }: { work: Work }) {
+  useStore();
+  const [cards, setCards] = useState<EntityCard[]>([]);
+  const [busy, setBusy] = useState("");
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const [uploadTarget, setUploadTarget] = useState<EntityCard | null>(null);
+
+  const load = useCallback(async () => {
+    setCards(await store.repo.listEntityCards(work.id));
+  }, [work.id]);
+  useEffect(() => { void load(); }, [load]);
+
+  async function extract() {
+    setBusy("AI 提取设定中…");
+    try {
+      const cfg = work.settings.taskConfigs.extract ?? store.defaultTaskConfig("extract");
+      const client = store.getClient(cfg.providerId);
+      const cs = await store.repo.listChapters(work.id);
+      const texts: Record<string, string> = {};
+      for (const c of cs) texts[c.id] = await store.repo.getChapterText(c.id);
+      const { extractEntityCards } = await import("@marginal/core");
+      const found = await extractEntityCards(client, cfg.model, work, texts);
+      for (const c of found) {
+        const dupe = cards.find((x) => x.name === c.name && x.kind === c.kind);
+        if (!dupe) await store.repo.putEntityCard(c);
+      }
+      await load();
+      store.notify(`提取到 ${found.length} 张实体卡（草稿）`);
+    } catch (err) {
+      store.notify(`提取失败：${err instanceof Error ? err.message : err}`);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function toggleCanon(card: EntityCard) {
+    if (card.status === "draft") {
+      await store.repo.putEntityCard({ ...card, status: "canon" });
+      store.notify(`「${card.name}」已正典——插图链路将携带其定妆照作参考图`);
+    } else {
+      if (!window.confirm(`将「${card.name}」降回草稿？其参考图资格随之失效。`)) return;
+      await store.repo.putEntityCard({ ...card, status: "draft" });
+    }
+    await load();
+  }
+
+  async function genPortrait(card: EntityCard) {
+    setBusy("生成定妆照中…");
+    try {
+      const cfg = work.settings.taskConfigs.illustration ?? store.defaultTaskConfig("illustration");
+      const client = store.getClient(cfg.providerId);
+      const prompt = buildIllustrationPrompt(
+        `「${card.name}」的单人标准像，纯色背景，上半身，设定集风格`,
+        [card], false,
+      );
+      store.queue.add(`定妆照：${card.name}`, async () => {
+        const result = await client.generateImage({ prompt, references: [], model: cfg.model });
+        const bytes = Uint8Array.from(atob(result.dataBase64), (c) => c.charCodeAt(0));
+        const blobId = uuidv7();
+        const storageKey = `${work.id}/${blobId}`;
+        await store.repo.putBlob({
+          id: blobId, workId: work.id, kind: "image", byteSize: bytes.length,
+          mime: result.mime, sha256: await sha256Hex(bytes), storageKey,
+        }, bytes);
+        await store.repo.putEntityCard({ ...card, portraitBlobId: blobId });
+        await load();
+        store.notify(`「${card.name}」定妆照已生成`);
+      });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function onUpload(file: File) {
+    if (!uploadTarget) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const blobId = uuidv7();
+    const storageKey = `${work.id}/${blobId}`;
+    await store.repo.putBlob({
+      id: blobId, workId: work.id, kind: "image", byteSize: bytes.length,
+      mime: file.type || "image/png", sha256: await sha256Hex(bytes), storageKey,
+    }, bytes);
+    await store.repo.putEntityCard({ ...uploadTarget, portraitBlobId: blobId });
+    setUploadTarget(null);
+    await load();
+    store.notify("定妆照已上传");
+  }
+
+  function editCard(card: EntityCard) {
+    const attrs = window.prompt(
+      `编辑「${card.name}」的属性（每行一个 key：value）`,
+      Object.entries(card.attributes).map(([k, v]) => `${k}：${v}`).join("\n"),
+    );
+    if (!attrs) return;
+    const attributes = Object.fromEntries(
+      attrs.split("\n").map((l) => {
+        const at = l.indexOf("：") >= 0 ? l.indexOf("：") : l.indexOf(":");
+        return at > 0 ? [l.slice(0, at).trim(), l.slice(at + 1).trim()] : [l.trim(), ""];
+      }).filter(([k]) => k),
+    );
+    void store.repo.putEntityCard({ ...card, attributes }).then(load);
+  }
+
+  return (
+    <div>
+      <div className="card row">
+        <button className="primary" disabled={!!busy} onClick={extract}>🤖 AI 全文提取设定</button>
+        {busy && <span className="muted">{busy}</span>}
+        <span className="muted">确认（正典）= 参考图资格；正典卡必须有定妆照才能为插图提供参考</span>
+      </div>
+      <input ref={uploadRef} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
+      <div className="card">
+        {cards.length === 0 && <div className="muted">还没有实体卡——先执行 AI 提取。</div>}
+        <table className="list">
+          <tbody>
+            {cards.map((c) => (
+              <tr key={c.id}>
+                <td>{c.kind === "character" ? "👤" : c.kind === "scene" ? "🏞" : "📦"}</td>
+                <td><b>{c.name}</b>{c.aliases.length > 0 && <span className="muted">（{c.aliases.join("、")}）</span>}</td>
+                <td className="muted" style={{ maxWidth: 320 }}>{Object.entries(c.attributes).map(([k, v]) => `${k}：${v}`).join("；").slice(0, 120)}</td>
+                <td><span className={`badge ${c.status}`}>{c.status === "canon" ? "正典" : "草稿"}</span></td>
+                <td style={{ textAlign: "right" }}>
+                  <button onClick={() => toggleCanon(c)}>{c.status === "draft" ? "✓ 确认正典" : "降回草稿"}</button>{" "}
+                  <button onClick={() => genPortrait(c)} disabled={c.status !== "canon"}>生成定妆照</button>{" "}
+                  <button onClick={() => { setUploadTarget(c); uploadRef.current?.click(); }}>上传定妆照</button>{" "}
+                  <button onClick={() => editCard(c)}>编辑</button>{" "}
+                  <button className="danger" onClick={() => window.confirm(`删除「${c.name}」？`) && store.repo.deleteEntityCard(c.id).then(load)}>删除</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
