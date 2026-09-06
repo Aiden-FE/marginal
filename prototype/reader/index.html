@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>阅读器原型：CSS 多栏分页 + 段落锚点图文混排</title>
+<style>
+  :root {
+    --page-gap: 68px; /* = 左右 padding ×2，保证「栏宽+栏距 = 视口宽」的整页步进 */
+    --font-size: 19px;
+    --line-height: 1.9;
+    --theme-bg: #f5efdf;
+    --theme-fg: #3a3226;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #2b2b2b; font-family: "PingFang SC", "Microsoft YaHei", serif; }
+
+  header {
+    display: flex; gap: 8px; align-items: center; padding: 8px 12px;
+    background: #1d1d1d; color: #ddd; font-size: 13px; position: fixed;
+    top: 0; left: 0; right: 0; z-index: 10;
+  }
+  header button { padding: 4px 10px; cursor: pointer; }
+  header .info { margin-left: auto; color: #9a9a9a; }
+
+  /* 视口：一屏 = 一页 */
+  #viewport {
+    position: fixed; top: 42px; bottom: 24px; left: 0; right: 0;
+    overflow: hidden; background: var(--theme-bg);
+  }
+  /* 分页容器：CSS 多栏，栏宽 = 视口宽，横向 translate 翻页 */
+  #pages {
+    height: 100%;
+    column-width: var(--page-w);
+    column-gap: var(--page-gap);
+    column-fill: auto;
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+    color: var(--theme-fg);
+    padding: 28px 34px;
+    transition: transform .25s ease;
+    will-change: transform;
+  }
+  #pages p { text-indent: 2em; margin: 0 0 .4em; orphans: 2; widows: 2; }
+  #pages h2 {
+    font-size: 1.25em; margin: 1.2em 0 .8em; text-align: center;
+    break-after: avoid;
+  }
+  /* 段落锚点插图：inline，随文本流分栏排布；尺寸必须适配栏高，否则溢出破坏分栏 */
+  #pages img.illus {
+    display: block; width: auto; max-width: 100%;
+    max-height: calc(100vh - 220px); /* 栏高 ≈ 100vh - 顶栏/底栏/内边距 */
+    margin: .8em auto; border-radius: 6px;
+    break-inside: avoid;
+  }
+  #pages .anchor-mark {
+    background: #d9a44188; border-radius: 3px; padding: 0 2px;
+  }
+
+  footer {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 24px;
+    background: #1d1d1d; color: #888; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* 翻页点击热区 */
+  .tap-zone { position: fixed; top: 42px; bottom: 24px; width: 18%; z-index: 5; }
+  #tap-left { left: 0; } #tap-right { right: 0; }
+</style>
+</head>
+<body>
+<header>
+  <button id="prev">← 上一页</button>
+  <button id="next">下一页 →</button>
+  <button id="font-plus">A+</button>
+  <button id="font-minus">A−</button>
+  <button id="insert-illus">在第 12 段插入插图（锚点混排）</button>
+  <button id="remove-illus">移除插图</button>
+  <span class="info" id="info"></span>
+</header>
+<div class="tap-zone" id="tap-left"></div>
+<div class="tap-zone" id="tap-right"></div>
+<div id="viewport"><div id="pages"></div></div>
+<footer><span id="page-indicator"></span></footer>
+
+<script>
+// ---------- 样本网文文本（程序生成，段长不一） ----------
+const SENTENCES = [
+  "山风掠过檐角，铜铃轻响，惊起一树寒鸦。",
+  "他握紧掌中残卷，指尖被纸页边缘割出一道细痕，血珠渗出来，他却浑然不觉。",
+  "远处传来更夫的梆子声，三长两短，是青石镇遇袭的暗号。",
+  "老者眯起眼睛，浑浊的瞳孔深处掠过一丝精光：「你可想好了，此路一去，再无回头。」",
+  "少年沉默片刻，将斗笠压得更低，一步踏进了漫天风雪里。",
+  "客栈的灯火在夜色中明明灭灭，像一头困兽的呼吸。",
+  "她转身时裙裾扬起，腰间玉佩撞在桌角，发出一声几不可闻的脆响。",
+  "雨下了整整七日，护城河的水涨过了警戒的红线，官府的告示被泡成一团墨渍。",
+  "剑未出鞘，杀意已至。巷口的三个人影同时后退了半步。",
+  "「这世上没有白喝的酒，」掌柜的擦着杯子头也不抬，「也没有白救的人。」",
+  "他数到第三颗星亮起时，城头的旗换成了玄色。",
+  "记忆里母亲的手总是温热的，如今那双手冷得像门外的石头。",
+];
+function buildSample() {
+  const paras = [];
+  let seed = 7;
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 90; i++) {
+    const n = 3 + Math.floor(rand() * 10);
+    let t = "";
+    for (let j = 0; j < n; j++) t += SENTENCES[Math.floor(rand() * SENTENCES.length)];
+    paras.push(t);
+  }
+  return paras;
+}
+
+// ---------- 渲染 ----------
+const pages = document.getElementById("pages");
+const viewport = document.getElementById("viewport");
+const paras = buildSample();
+let currentPage = 0, pageCount = 1;
+
+function render() {
+  let html = `<h2>第十七章 · 夜行</h2>`;
+  paras.forEach((t, i) => { html += `<p data-p="${i}">${t}</p>`; });
+  pages.innerHTML = html;
+}
+
+// 锚点：{ p: 段落索引, off: 段内字符偏移 } —— 相对位置，与 spec 约定一致
+function insertIllustrationAt(anchor, src) {
+  const p = pages.querySelector(`p[data-p="${anchor.p}"]`);
+  if (!p) return false;
+  // 先移除旧插图与标记，保证幂等
+  pages.querySelectorAll("img.illus, .anchor-mark").forEach(el => el.remove());
+  const node = p.firstChild;
+  const range = document.createRange();
+  const maxOff = node.textContent.length;
+  range.setStart(node, Math.min(anchor.off, maxOff));
+  range.collapse(true);
+  const mark = document.createElement("span");
+  mark.className = "anchor-mark"; mark.textContent = "◆";
+  range.insertNode(mark);
+  const img = document.createElement("img");
+  img.className = "illus"; img.alt = "锚点插图";
+  img.src = src; // data URI SVG 占位图，无网络依赖
+  mark.after(img);
+  return true;
+}
+const SAMPLE_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">
+     <rect width="640" height="360" fill="#c8b89a"/>
+     <text x="320" y="180" font-size="28" text-anchor="middle" fill="#5a4a30" font-family="serif">插图：雪夜 · 少年踏入风雪</text>
+   </svg>`);
+
+// ---------- 分页（CSS 多栏） ----------
+function paginate() {
+  const keepP = currentAnchor();           // 翻页/重排前记住阅读位置
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  pages.style.setProperty("--page-w", (w - 68) + "px");
+  // 内容自然流入多栏后，总宽 / 栏宽 = 页数
+  pageCount = Math.max(1, Math.round((pages.scrollWidth + parseFloat(getComputedStyle(pages).columnGap)) / w));
+  currentPage = Math.min(currentPage, pageCount - 1);
+  applyOffset();
+  if (keepP) scrollToAnchor(keepP);        // 重排后恢复到原段落
+}
+function applyOffset() {
+  const w = viewport.clientWidth;
+  pages.style.transform = `translateX(${-currentPage * w}px)`;
+  document.getElementById("page-indicator").textContent = `第 ${currentPage + 1} / ${pageCount} 页`;
+  document.getElementById("info").textContent =
+    `字号 ${getComputedStyle(pages).fontSize} · 段落 ${paras.length} · 图 ${pages.querySelectorAll("img.illus").length}`;
+}
+function currentAnchor() {
+  // 取视口左上角附近可见的第一个段落作为阅读位置锚点
+  const w = viewport.clientWidth;
+  const x = currentPage * w + 40;
+  for (const p of pages.querySelectorAll("p")) {
+    if (p.offsetLeft + p.offsetWidth > x) return { p: +p.dataset.p, off: 0 };
+  }
+  return null;
+}
+function scrollToAnchor(a) {
+  const p = pages.querySelector(`p[data-p="${a.p}"]`);
+  if (!p) return;
+  currentPage = Math.min(pageCount - 1, Math.floor(p.offsetLeft / viewport.clientWidth));
+  applyOffset();
+}
+
+// ---------- 交互 ----------
+function go(d) { currentPage = Math.max(0, Math.min(pageCount - 1, currentPage + d)); applyOffset(); }
+document.getElementById("next").onclick = () => go(1);
+document.getElementById("prev").onclick = () => go(-1);
+document.getElementById("tap-right").onclick = () => go(1);
+document.getElementById("tap-left").onclick = () => go(-1);
+document.getElementById("font-plus").onclick = () => {
+  const s = parseFloat(getComputedStyle(pages).fontSize);
+  pages.style.fontSize = (s + 2) + "px"; paginate();
+};
+document.getElementById("font-minus").onclick = () => {
+  const s = parseFloat(getComputedStyle(pages).fontSize);
+  pages.style.fontSize = Math.max(12, s - 2) + "px"; paginate();
+};
+let illusOn = false;
+document.getElementById("insert-illus").onclick = () => {
+  insertIllustrationAt({ p: 12, off: 20 }, SAMPLE_IMG); illusOn = true; paginate();
+};
+document.getElementById("remove-illus").onclick = () => {
+  render(); illusOn = false; paginate();
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") go(1);
+  if (e.key === "ArrowLeft") go(-1);
+});
+new ResizeObserver(() => paginate()).observe(viewport);
+
+render();
+paginate();
+</script>
+</body>
+</html>

@@ -2,8 +2,8 @@
 id: 007
 title: 阅读器分页与图文混排原型
 labels: [wayfinder:prototype]
-status: open
-assignee:
+status: closed
+assignee: Aiden
 blocked-by: [001]
 ---
 
@@ -14,3 +14,21 @@ blocked-by: [001]
 原型只需覆盖：一段真实网文文本的分页稳定性（窗口缩放/字号变化）、在指定锚点插入一张图片后的重排、基础翻页。不需要真实 AI、不需要数据层。
 
 产出：原型路径 + "该路线下阅读器可行性"的结论；若失败则触发跨端选型复议。
+
+## Resolution
+
+**结论：该路线下阅读器可行，实现成本低。** 原型位于 [prototype/reader/index.html](../../prototype/reader/index.html)（自包含单文件，`python3 -m http.server <port> --directory prototype/reader` 后浏览器打开即可玩；说明：分页引擎活在 DOM/CSS 里，与桌面壳无关，故 vanilla JS 原型与 Tauri webview 验证的是同一条渲染路径）。
+
+原型覆盖并实测通过（2026-09-06，IAB 1280×720）：
+
+- CSS 多栏分页：90 段样本网文 → 25 页，栏步进精确等于视口宽（起点 34+1280k，实测零漂移）。
+- 锚点图文混排：段落索引+字符偏移的锚点定义（与 spec 约定一致）经 Range 在段内精确插入插图标记与 inline 图片，插入后 25→26 页自动重排。
+- 字号变化重排：19px→21px → 25→30 页；窗口缩放重排：1280→900px → 30→42 页；重排后插图保留。
+- 翻页：按钮/点击热区/键盘，translateX 步进。
+
+**原型过程中发现并修复的两个真实坑（写进 spec 实现注意）**：
+
+1. 栏距必须设为「视口宽 − 栏宽」，否则翻页步进与栏步进不一致，逐页漂移（本例 20px/页）。
+2. 插图尺寸必须自适应栏高（max-height），否则 `break-inside: avoid` 的图片装不进任何一栏，溢出破坏分栏。
+
+剩余已知边角（留给实现）：跨栏选择文本、WebkitGTK 与 Chromium 的多栏渲染差异、首尾页空隙填充。
