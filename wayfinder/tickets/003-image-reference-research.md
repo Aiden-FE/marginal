@@ -2,8 +2,8 @@
 id: 003
 title: 文生图参考图能力与人物一致性调研
 labels: [wayfinder:research]
-status: open
-assignee:
+status: closed
+assignee: Aiden
 blocked-by: []
 ---
 
@@ -17,3 +17,7 @@ blocked-by: []
 4. 推荐的生成工作流：人物卡文字描述 + 参考图组合如何拼接 prompt。
 
 产出：插图任务供应商的能力约束清单 + 协议抽象建议（会反过来约束"仅 OpenAI-compatible"这条既定立场的例外情况）。
+
+## Resolution
+
+参考图已是主流图像 API 标配：OpenAI gpt-image-1/2（/images/edits，至 16 张）、Gemini Nano Banana（建议 ≤3 张）、Seedream 4.0+（至 10 张，类 OpenAI 扩展形状）、FLUX Kontext（多轮漂移最小但 3+ 张失效）。最佳实践：参考图编号并在 prompt 显式指代；本项目应为每个正典实体卡做"一张定妆照"作唯一参考，多实体场景 ≤3 张。协议修正：文本任务维持仅 OpenAI-compatible；图像任务的参考图无统一兼容形状，预留 per-provider adapter 扩展点（v1 内置 OpenAI edits 形状 + 火山方舟形状），UI 按能力位渲染，不支持参考图的供应商只开放草稿质量生成。详见 [../research/003-image-reference.md](../research/003-image-reference.md)。
