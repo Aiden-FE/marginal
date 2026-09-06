@@ -19,7 +19,7 @@ title: 跨端 AI 电子书应用 v1 规格
 - 个人工具；无账号、无云、无内容合规问题。
 - v1 = 桌面端 + web 端，双端全功能；AI 任务在 web 端于浏览器内跑；移动端后置（见 Out of scope）。
 - v1 核心体验：AI 修复导入的 TXT 小说（章节切分 + 内容清洗）；插图链路其次。
-- 供应商抽象：协议层仅 OpenAI-compatible；按任务类型（修复 / 实体提取 / 插图生成）独立配置供应商与模型；插图任务必须支持参考图输入。
+- 供应商抽象：协议层仅 OpenAI-compatible（文本任务维持不变）；按任务类型（修复 / 实体提取 / 插图生成）独立配置供应商与模型；插图任务必须支持参考图输入。**修订（research/003）**：图像任务的参考图无统一兼容形状，预留 per-provider adapter 扩展点，UI 按能力位渲染。
 - 修复边界：章节结构自动 + 可重跑；正文改动一律 diff 审核制。
 - 实体卡确认 = 正典 = 参考图资格：确认前插图是草稿质量，确认后链路必带参考图。
 - 阅读器 v1 即需分页引擎 + 图文混排（仿真阅读器，非滚动简版）。
@@ -30,12 +30,16 @@ title: 跨端 AI 电子书应用 v1 规格
 
 <!-- 每行一个已关闭工单：[工单名](链接): 一句话决议 -->
 
+- [跨端技术选型评估](tickets/001-cross-platform-stack.md): TypeScript monorepo「web 核心为第一公民」+ Tauri 2 桌面壳；存储 SQLite everywhere（桌面 sqlx / web sqlite-wasm OPFS-sahpool in Worker）；否决 Flutter 与 RN/Expo；Electron 为备选（只换 adapter）。
+- [浏览器端 AI 任务可行性](tickets/002-browser-ai-feasibility.md): web 全功能成立，附三条件——供应商连通性诊断必做、任务队列以 checkpoint 断点续跑为一等公民、存储容量充足；本地一键小代理进 v1。
+- [文生图参考图能力与人物一致性调研](tickets/003-image-reference-research.md): 参考图是主流图像 API 标配；正典实体卡配"一张定妆照"作唯一参考、多实体 ≤3 张；图像协议走 per-provider adapter（v1 内置 OpenAI edits 形状 + 火山方舟形状）。
+
 ## Not yet specified
 
-- 各端本地存储引擎的具体选型（等跨端与浏览器可行性研究出结论后才能提问）
-- 排版/分页引擎的具体选型与实现路径（等跨端选型与阅读器原型）
-- 人物卡 schema 与插图 prompt 模板细节（等参考图调研与插图链路设计）
+- 排版/分页引擎的具体实现细节（research/001 已定向 CSS 多栏 + Range 锚点、对标 foliate-js，细节等阅读器原型验证）
+- 人物卡 schema 与插图 prompt 模板细节（等插图链路设计）
 - 修复质量评估方法与回归样例集（等修复流水线设计）
+- 本地一键小代理的交付形态（脚本 vs 桌面端内置代理，spec 阶段随实现细节一并定）
 - spec 汇总成文的形态与组织（等前沿清空）
 
 ## Out of scope
