@@ -2,8 +2,8 @@
 id: 002
 title: 浏览器端 AI 任务可行性
 labels: [wayfinder:research]
-status: open
-assignee:
+status: closed
+assignee: Aiden
 blocked-by: []
 ---
 
@@ -17,3 +17,7 @@ web 端要在浏览器内直接调用用户自定义的 OpenAI-compatible 供应
 4. 浏览器本地存储容量（IndexedDB/OPFS）对"整本网文 + 数百张插图"的容量上限与注意事项。
 
 产出：结论"web 全功能是否成立"；若成立附缓解方案清单；若不成立给出降级形态建议。
+
+## Resolution
+
+**web 全功能成立**，附三个设计条件：① 供应商层内置连通性诊断（CORS 实测：OpenRouter/硅基流动/DeepSeek/Kimi/DashScope/智谱全部放行，OpenAI/Anthropic/Gemini 官方端点需代理或被地区封锁，"可直连"不可假设）；② 任务队列按"可中断、可恢复"设计——浏览器后台 5 分钟冻结、内存压力 discard，必须每项完成即 checkpoint 并处理 freeze/resume/wasDiscarded；③ 存储充足（Chrome 单源 ~60% 磁盘、Safari ~20%、Firefox min(10%,10GiB)，数百张插图无压力）。缓解方案：应用内诊断 + 本地一键小代理进 v1，Cloudflare Worker 作为文档方案。详见 [../research/002-browser-ai-feasibility.md](../research/002-browser-ai-feasibility.md)。
