@@ -12,7 +12,7 @@ import {
   type Work,
   type WorkSettings,
 } from "@marginal/core";
-import { openRepository } from "@marginal/data";
+import { openRepository, engineInfo } from "@marginal/data";
 
 export type View =
   | { name: "library" }
@@ -69,7 +69,7 @@ class Store {
 
   async init(): Promise<void> {
     this.repo = await openRepository();
-    this.engine = this.repo.engine;
+    this.engine = this.repo.engine + (engineInfo.reason ? `（降级：${engineInfo.reason}）` : "");
     await this.repo.init();
     const saved = localStorage.getItem(PROVIDERS_KEY);
     if (saved) {

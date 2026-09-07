@@ -46,8 +46,8 @@ src-tauri/ 桌面壳脚手架（见下）
 | 段落配图 + 批量预扫入队（并发/暂停/重试/预算） | ✅ 已验证 |
 | 供应商连通性诊断 + 本地 CORS 代理脚本 | ✅ 已实现 |
 | 全书包 .mabk 导出/导入（覆盖或副本） | ✅ 单测往返通过 |
-| 存储引擎 | ✅ IndexedDB 已验证；SQLite WASM/OPFS 已实现，在不支持的 WebView 中自动降级（代码保留，`?engine=sqlite` 可诊断）。桌面 WKWebView 不支持 OPFS，原生 SQLite 需后续接 tauri-plugin-sql |
-| 桌面端（Tauri 2 壳） | ✅ 已实现并编译：`pnpm tauri build` 产出 [Marginal.app](src-tauri/target/release/bundle/macos/)，真机启动验证通过（导入/切分/阅读全流程）；DMG 打包需 AppleScript 权限，`bundle.targets` 暂为 `["app"]` |
+| 存储引擎 | ✅ **双端统一用 SQLite**：桌面走 tauri-plugin-sql（Rust 侧原生 rusqlite/sqlx），web 走 sqlite-wasm（OPFS-sahpool，Worker）。同一份 schema + 共用基类 `SqliteRepositoryBase`；WebView 不支持时自动降级 IndexedDB（同接口） |
+| 桌面端（Tauri 2 壳） | ✅ 已实现并编译：`pnpm tauri build` 产出 [Marginal.app](src-tauri/target/release/bundle/macos/)，真机验证通过（导入/切分/阅读全流程 + **原生 SQLite 落库**，数据库文件位于 `~/Library/Application Support/dev.aiden.marginal/marginal.db`）；DMG 打包需 AppleScript 权限，`bundle.targets` 暂为 `["app"]` |
 | 移动端 / EPUB / 云同步 / 字段级合并 | ❌ spec 划为 Out of scope |
 
 > 已知缺口：结构修订的 UI 回滚（以重跑替代，见工单 004）；结构修订回滚模型已支持快照恢复。
