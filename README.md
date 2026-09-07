@@ -13,6 +13,8 @@ pnpm test           # core 逻辑冒烟测试（15 项）
 pnpm build          # 生产构建
 node tools/gen-sample.mjs   # 生成一本"脏"样本网文（含广告/乱码/错字）
 node tools/proxy.mjs <上游 base URL> [端口]   # 需代理的供应商用
+pnpm tauri build    # 桌面端（需 Rust：curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal）
+open src-tauri/target/release/bundle/macos/Marginal.app
 ```
 
 书架上的 **🧪 导入示例书** 可一键载入样本，配合内置**演示模式供应商**（无需 API key）即可端到端体验修复/提取/插图全流程。
@@ -44,8 +46,8 @@ src-tauri/ 桌面壳脚手架（见下）
 | 段落配图 + 批量预扫入队（并发/暂停/重试/预算） | ✅ 已验证 |
 | 供应商连通性诊断 + 本地 CORS 代理脚本 | ✅ 已实现 |
 | 全书包 .mabk 导出/导入（覆盖或副本） | ✅ 单测往返通过 |
-| 存储引擎 | ✅ IndexedDB 已验证；SQLite WASM/OPFS 已实现，在开发用 in-app browser 中初始化失败自动降级（代码保留，`?engine=sqlite` 可诊断），预期 Chrome/Tauri WebView 正常 |
-| 桌面端（Tauri 2 壳） | ⚠️ 脚手架（tauri.conf.json + 壳代码）——本机无 Rust 工具链未编译；web 前端即为桌面壳加载的前端 |
+| 存储引擎 | ✅ IndexedDB 已验证；SQLite WASM/OPFS 已实现，在不支持的 WebView 中自动降级（代码保留，`?engine=sqlite` 可诊断）。桌面 WKWebView 不支持 OPFS，原生 SQLite 需后续接 tauri-plugin-sql |
+| 桌面端（Tauri 2 壳） | ✅ 已实现并编译：`pnpm tauri build` 产出 [Marginal.app](src-tauri/target/release/bundle/macos/)，真机启动验证通过（导入/切分/阅读全流程）；DMG 打包需 AppleScript 权限，`bundle.targets` 暂为 `["app"]` |
 | 移动端 / EPUB / 云同步 / 字段级合并 | ❌ spec 划为 Out of scope |
 
 > 已知缺口：结构修订的 UI 回滚（以重跑替代，见工单 004）；结构修订回滚模型已支持快照恢复。

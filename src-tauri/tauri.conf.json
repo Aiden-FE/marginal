@@ -12,5 +12,10 @@
   "app": {
     "windows": [{ "title": "Marginal", "width": 1280, "height": 820 }],
     "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.icns", "icons/icon.ico", "icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"]
   }
 }
