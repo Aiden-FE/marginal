@@ -2,7 +2,9 @@
 
 import { useRef, useState } from "react";
 import { decodeText, store, useStore } from "../store";
-import { BUNDLE_EXT, buildBundle, proposeStructure, readBundle, reidForCopy, sliceChapterText, type ProposedChapter } from "@marginal/core";
+import { BUNDLE_EXT, proposeStructure, readBundle, reidForCopy, type ProposedChapter } from "@marginal/core";
+import { confirmImport as confirmImportAction, exportBundle as exportBundleAction } from "../actions";
+import { mergeChapterUp, splitChapterAt } from "../mobile/logic";
 
 export function LibraryView() {
   useStore();
@@ -18,43 +20,16 @@ export function LibraryView() {
     setImporting({ filename: file.name, text, chapters });
   }
 
-  async function confirmImport(title: string) {
+  async function confirmImport(title: string, chapters: ProposedChapter[]) {
     if (!importing) return;
-    const chapterData = importing.chapters.map((c) => ({ title: c.title, text: sliceChapterText(importing.text, c.startLine, c.endLine) }));
-    const work = await store.createWorkFromText(title || importing.filename.replace(/\.txt$/i, ""), importing.filename, importing.text, chapterData);
+    await confirmImportAction(title, importing.filename, importing.text, chapters);
     setImporting(null);
-    store.notify(`已导入 ${chapterData.length} 章`);
-    store.navigate({ name: "work", workId: work.id, tab: "reader" });
   }
 
   async function exportBundle(workId: string) {
     setBundleBusy(true);
     try {
-      const repo = store.repo;
-      const work = await repo.getWork(workId);
-      if (!work) return;
-      const chapters = await repo.listChapters(workId);
-      const chapterTexts: Record<string, string> = {};
-      for (const c of chapters) chapterTexts[c.id] = await repo.getChapterText(c.id);
-      const blobs = await repo.listBlobs(workId);
-      const revisions = await repo.listRevisions(workId);
-      const runs = await repo.listRuns(workId);
-      const cards = await repo.listEntityCards(workId);
-      const illus = await repo.listIllustrations(workId);
-      const anchors = await repo.listAnchors(workId);
-      const blobData: Record<string, Uint8Array> = {};
-      for (const b of blobs) {
-        const data = await repo.getBlobData(b.storageKey);
-        if (data) blobData[b.storageKey] = data;
-      }
-      const zip = buildBundle({ work, chapters, chapterTexts, runs, revisions, entityCards: cards, illustrations: illus, anchors, blobs }, blobData);
-      const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: "application/octet-stream" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${work.title}${BUNDLE_EXT}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      store.notify("全书包已导出");
+      await exportBundleAction(workId);
     } finally {
       setBundleBusy(false);
     }
@@ -129,27 +104,16 @@ export function LibraryView() {
 function SplitPreview({ importing, onCancel, onConfirm }: {
   importing: { filename: string; text: string; chapters: ProposedChapter[] };
   onCancel: () => void;
-  onConfirm: (title: string) => void;
+  onConfirm: (title: string, chapters: ProposedChapter[]) => void;
 }) {
   const [chapters, setChapters] = useState(importing.chapters);
   const [title, setTitle] = useState(importing.filename.replace(/\.txt$/i, ""));
 
   function mergeUp(i: number) {
-    if (i <= 0) return;
-    const next = [...chapters];
-    next[i - 1] = { ...next[i - 1], endLine: next[i].endLine };
-    next.splice(i, 1);
-    setChapters(next);
+    setChapters(mergeChapterUp(chapters, i));
   }
   function splitAt(i: number, relLine: number) {
-    const ch = chapters[i];
-    if (relLine <= ch.startLine || relLine >= ch.endLine) return;
-    const text = importing.text.split(/\r\n|\r|\n/);
-    const next = [...chapters];
-    next.splice(i, 1,
-      { title: text[relLine]?.trim().slice(0, 60) || `部分 ${relLine}`, startLine: ch.startLine, endLine: relLine, lowConfidence: false },
-      { title: "（未命名）", startLine: relLine, endLine: ch.endLine, lowConfidence: false });
-    setChapters(next);
+    setChapters(splitChapterAt(importing.text, chapters, i, relLine));
   }
 
   const lowCount = chapters.filter((c) => c.lowConfidence).length;
@@ -182,7 +146,7 @@ function SplitPreview({ importing, onCancel, onConfirm }: {
           </table>
         </div>
         <div className="row" style={{ marginTop: 14 }}>
-          <button className="primary" onClick={() => onConfirm(title)}>确认导入</button>
+          <button className="primary" onClick={() => onConfirm(title, chapters)}>确认导入</button>
           <button onClick={onCancel}>取消</button>
         </div>
       </div>

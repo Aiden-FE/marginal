@@ -2,11 +2,13 @@
 // 实现必记两坑（spec §4.3）：栏距=视口宽−栏宽；插图 max-height 适配栏高。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildIllustrationPrompt, splitParagraphs, uuidv7, sha256Hex, type Anchor, type EntityCard, type Illustration, type Work } from "@marginal/core";
+import { splitParagraphs, type Anchor, type Work } from "@marginal/core";
 import { store, useStore } from "../store";
+import { generateIllustration as generateIllustrationAction } from "../actions";
+import { IllustrationImage } from "./IllustrationImage";
 
 export function ReaderView({ work }: { work: Work }) {
-  useStore();
+  const version = useStore();
   const [chapters, setChapters] = useState<{ id: string; idx: number; title: string }[]>([]);
   const [chapterId, setChapterId] = useState<string>("");
   const [text, setText] = useState("");
@@ -33,7 +35,7 @@ export function ReaderView({ work }: { work: Work }) {
     setChapterId(target.id);
     setText(await store.repo.getChapterText(target.id));
     setAnchors((await store.repo.listAnchors(work.id)).filter((a) => a.chapterId === (target?.id ?? "") && a.state === "active"));
-  }, [work.id, chapterId]);
+  }, [work.id, chapterId, version]);
 
   useEffect(() => {
     void load();
@@ -81,47 +83,7 @@ export function ReaderView({ work }: { work: Work }) {
   }, [anchors]);
 
   async function generateIllustration(paraIndex: number, sceneDescription: string) {
-    const cfg = work.settings.taskConfigs.illustration ?? store.defaultTaskConfig("illustration");
-    const client = store.getClient(cfg.providerId);
-    const cards = (await store.repo.listEntityCards(work.id)).filter((c) => c.status === "canon");
-    // 参考图资格（spec §4.4）：仅正典卡带定妆照
-    const references: { mime: string; dataBase64: string }[] = [];
-    for (const card of cards.slice(0, 3)) {
-      if (!card.portraitBlobId) continue;
-      const blob = (await store.repo.listBlobs(work.id)).find((b) => b.id === card.portraitBlobId);
-      if (!blob) continue;
-      const data = await store.repo.getBlobData(blob.storageKey);
-      if (data) {
-        let bin = "";
-        for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode(...data.subarray(i, i + 0x8000));
-        references.push({ mime: blob.mime, dataBase64: btoa(bin) });
-      }
-    }
-    const prompt = buildIllustrationPrompt(sceneDescription, cards.slice(0, 3), references.length > 0);
-    store.notify("插图已加入队列…");
-    store.queue.add(`插图：${sceneDescription.slice(0, 18)}`, async () => {
-      const result = await client.generateImage({ prompt, references, model: cfg.model });
-      const bytes = Uint8Array.from(atob(result.dataBase64), (c) => c.charCodeAt(0));
-      const blobId = uuidv7();
-      const storageKey = `${work.id}/${blobId}`;
-      await store.repo.putBlob({
-        id: blobId, workId: work.id, kind: "image", byteSize: bytes.length, mime: result.mime,
-        sha256: await sha256Hex(bytes), storageKey,
-      }, bytes);
-      const illus: Illustration = {
-        id: uuidv7(), workId: work.id, prompt, providerId: cfg.providerId, model: cfg.model,
-        blobId, status: "accepted", genMeta: { referenceBlobIds: references ? [] : [], }, entityCardIds: cards.map((c) => c.id),
-        createdAt: Date.now(),
-      };
-      await store.repo.putIllustration(illus);
-      const anchor: Anchor = {
-        id: uuidv7(), workId: work.id, chapterId, paraIndex, charOffset: 0,
-        targetType: "illustration", targetId: illus.id, state: "active",
-      };
-      await store.repo.putAnchor(anchor);
-      await load();
-      store.notify("插图已插入锚点");
-    });
+    await generateIllustrationAction(work, chapterId, paraIndex, sceneDescription);
     setIllusPrompt(null);
   }
 
@@ -199,30 +161,4 @@ function IllusPromptForm({ defaultScene, onSubmit, onCancel }: { defaultScene: s
       </div>
     </div>
   );
-}
-
-function IllustrationImage({ anchor, workId }: { anchor: Anchor; workId: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let revoke: string | null = null;
-    void (async () => {
-      const blobs = await store.repo.listBlobs(workId);
-      const illus = (await store.repo.listIllustrations(workId)).find((i) => i.id === anchor.targetId);
-      if (!illus) return;
-      const meta = blobs.find((b) => b.id === illus.blobId);
-      if (!meta) return;
-      const data = await store.repo.getBlobData(meta.storageKey);
-      if (!data) return;
-      const ext = meta.mime.includes("svg") ? "svg" : "png";
-      const url2 = URL.createObjectURL(new Blob([data as BlobPart], { type: meta.mime }));
-      void ext;
-      revoke = url2;
-      setUrl(url2);
-    })();
-    return () => {
-      if (revoke) URL.revokeObjectURL(revoke);
-    };
-  }, [anchor.targetId, workId]);
-  if (!url) return null;
-  return <img className="illus" src={url} alt="段落插图" />;
 }

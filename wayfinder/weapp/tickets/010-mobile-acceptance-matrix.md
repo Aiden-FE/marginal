@@ -2,8 +2,8 @@
 id: 010
 title: 小程序移动验收矩阵与交付门槛
 labels: [wayfinder:grilling]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [006, 007, 008, 009]
 ---
 
@@ -21,4 +21,4 @@ blocked-by: [006, 007, 008, 009]
 
 ## Resolution
 
-（待决议）
+改道决议：验收矩阵改为 H5 真机浏览器验收（LAN URL + 移动视口），随 H5 实现一并执行，本票关闭。

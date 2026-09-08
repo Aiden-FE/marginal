@@ -4,3 +4,7 @@ dist/
 src-tauri/target/
 .DS_Store
 src-tauri/gen/
+test-results/
+playwright-report/
+.zcode/plans/
+.zcode/plans/

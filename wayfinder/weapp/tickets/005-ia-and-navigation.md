@@ -2,8 +2,8 @@
 id: 005
 title: 移动端信息架构与导航设计
 labels: [wayfinder:grilling]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [001]
 ---
 
@@ -21,4 +21,4 @@ web/桌面是「边栏书架 + 工作台」的桌面式 IA。移动端必须重�
 
 ## Resolution
 
-（待决议）
+改道决议（2026-09-08）：小程序方案暂缓，转移动端 H5。本票的 IA 结论（底部导航/单列任务流/沉浸阅读）由 H5 实现直接继承，不再单独走 grilling。

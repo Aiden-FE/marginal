@@ -9,5 +9,5 @@ export default defineConfig({
     exclude: ["@sqlite.org/sqlite-wasm"],
   },
   worker: { format: "es" },
-  server: { port: 5199 },
+  server: { port: 5199, strictPort: true },
 });

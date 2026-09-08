@@ -4,11 +4,15 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "pnpm --filter @marginal/app dev",
+    "dev:lan": "pnpm --filter @marginal/app dev:lan",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "playwright test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "proxy": "node tools/proxy.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2.11.4"
   }
 }

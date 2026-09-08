@@ -7,6 +7,10 @@ import { EntitiesView } from "./components/EntitiesView";
 import { IllustrationsView } from "./components/IllustrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { QueuePanel } from "./components/QueuePanel";
+import { MobileApp } from "./mobile/MobileApp";
+import { currentUiMode } from "./mobile/logic";
+
+const uiMode = currentUiMode();
 
 export function App() {
   useStore();
@@ -24,6 +28,7 @@ export function App() {
     </div>;
   }
   if (!store.ready) return <div style={{ padding: 40 }} className="muted">初始化存储引擎中…</div>;
+  if (uiMode === "mobile") return <MobileApp />;
   const view = store.view;
   const current = view.name === "work" ? store.works.find((w) => w.id === view.workId) : undefined;
 

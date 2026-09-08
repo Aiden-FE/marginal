@@ -9,7 +9,9 @@
 ```bash
 pnpm install
 pnpm dev            # web 应用（http://localhost:5199）
-pnpm test           # core 逻辑冒烟测试（15 项）
+pnpm dev:lan        # 移动 H5 局域网访问（vite --host，手机浏览器连 http://<局域网IP>:5199）
+pnpm test           # core 冒烟测试 + app 单元测试（vitest）
+pnpm test:e2e       # 移动 H5 Playwright e2e（系统 Chrome channel + 390×844 + 强制 IndexedDB）
 pnpm build          # 生产构建
 node tools/gen-sample.mjs   # 生成一本"脏"样本网文（含广告/乱码/错字）
 node tools/proxy.mjs <上游 base URL> [端口]   # 需代理的供应商用
@@ -28,6 +30,7 @@ packages/
            任务队列、全书包(.mabk) 序列化、Repository 接口
   data/    存储引擎：SQLite WASM(OPFS-sahpool, Worker) 优先，IndexedDB 同接口降级
   app/     Vite + React web 应用（阅读器/导入/修复审核/实体卡/插图/设置/队列）
+           src/actions.ts 为移动/桌面共享业务动作层；src/mobile/ 为移动 H5 专属 UI
 tools/     本地 CORS 代理、样本生成
 src-tauri/ 桌面壳脚手架（见下）
 ```
@@ -48,6 +51,7 @@ src-tauri/ 桌面壳脚手架（见下）
 | 全书包 .mabk 导出/导入（覆盖或副本） | ✅ 单测往返通过 |
 | 存储引擎 | ✅ **双端统一用 SQLite**：桌面走 tauri-plugin-sql（Rust 侧原生 rusqlite/sqlx），web 走 sqlite-wasm（OPFS-sahpool，Worker）。同一份 schema + 共用基类 `SqliteRepositoryBase`；WebView 不支持时自动降级 IndexedDB（同接口） |
 | 桌面端（Tauri 2 壳） | ✅ 已实现并编译：`pnpm tauri build` 产出 [Marginal.app](src-tauri/target/release/bundle/macos/)，真机验证通过（导入/切分/阅读全流程 + **原生 SQLite 落库**，数据库文件位于 `~/Library/Application Support/dev.aiden.marginal/marginal.db`）；DMG 打包需 AppleScript 权限，`bundle.targets` 暂为 `["app"]` |
-| 移动端 / EPUB / 云同步 / 字段级合并 | ❌ spec 划为 Out of scope |
+| 移动端 H5（手机浏览器） | ✅ 已实现：`packages/app/src/mobile/` 移动专属 UI（底部 Tab 书架/任务/我的 + 全屏导入流 + 连续滚动阅读器 + 底部 sheet 交互），与桌面共享同一 store/action/存储层，桌面渲染路径不变。入口自动分流（`pointer: coarse` 或宽 <768px），`?ui=mobile` / `?ui=desktop` 可强制。真机经局域网（`pnpm dev:lan`）访问时非安全上下文 → OPFS 不可用 → 自动降级 IndexedDB（预期行为，IDB 为移动默认验收引擎）。e2e：`pnpm test:e2e` |
+| EPUB / 云同步 / 字段级合并 | ❌ spec 划为 Out of scope |
 
 > 已知缺口：结构修订的 UI 回滚（以重跑替代，见工单 004）；结构修订回滚模型已支持快照恢复。

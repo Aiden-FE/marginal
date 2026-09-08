@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { uuidv7 } from "@marginal/core";
 import { store, useStore, type ProviderEntry } from "../store";
+import { diagnose as diagnoseAction, saveProvider, deleteProvider } from "../actions";
 
 const TASKS: { key: "repair" | "extract" | "illustration"; label: string; hint: string }[] = [
   { key: "repair", label: "修复", hint: "便宜模型够用（清洗/边界复核）" },
@@ -25,16 +26,13 @@ export function SettingsView() {
   }
 
   function update(p: ProviderEntry, patch: Partial<ProviderEntry>) {
-    Object.assign(p, patch);
-    store.saveProviders();
+    saveProvider({ ...p, ...patch });
     refresh();
   }
 
   async function diagnose(p: ProviderEntry) {
-    update(p, { diagnostic: "checking" });
-    const result = p.kind === "demo" ? "direct" : await new (await import("@marginal/core")).ProviderClient(p).diagnose();
-    update(p, { diagnostic: result });
-    store.notify(result === "direct" ? `「${p.name}」浏览器可直连` : `「${p.name}」浏览器无法直连——请走本地代理（见下方指引）`);
+    await diagnoseAction(p);
+    refresh();
   }
 
   function taskConfigKey(kind: string): string {
@@ -70,7 +68,7 @@ export function SettingsView() {
                   <button onClick={() => diagnose(p)}>{p.diagnostic === "checking" ? "检测中…" : "连通性诊断"}</button>{" "}
                   {p.diagnostic === "direct" && <span className="badge" style={{ color: "var(--ok)", borderColor: "var(--ok)" }}>可直连</span>}
                   {p.diagnostic === "needs-proxy" && <span className="badge failed">需代理</span>}
-                  {p.kind === "openai" && <button className="danger" onClick={() => { store.providers = store.providers.filter((x) => x !== p); store.saveProviders(); refresh(); }}>删除</button>}
+                  {p.kind === "openai" && <button className="danger" onClick={() => { deleteProvider(p.id); refresh(); }}>删除</button>}
                 </td>
               </tr>
             ))}

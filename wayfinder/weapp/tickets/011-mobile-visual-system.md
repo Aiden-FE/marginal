@@ -2,8 +2,8 @@
 id: 011
 title: 小程序移动视觉体系与组件规范
 labels: [wayfinder:prototype]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [005, 006, 007, 009]
 ---
 
@@ -21,4 +21,4 @@ blocked-by: [005, 006, 007, 009]
 
 ## Resolution
 
-（待决议）
+改道决议：视觉体系以 H5 实现中的 mobile.css 落地（复用 :root token + 触控规范），本票关闭。

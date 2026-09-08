@@ -2,8 +2,8 @@
 id: 007
 title: AI 工作流移动端交互设计
 labels: [wayfinder:grilling]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [001, 005]
 ---
 
@@ -21,4 +21,4 @@ blocked-by: [001, 005]
 
 ## Resolution
 
-（待决议）
+改道决议：AI 工作流移动交互（卡片化 diff 审核/步骤化实体/队列状态）由 H5 实现落地，本票关闭。

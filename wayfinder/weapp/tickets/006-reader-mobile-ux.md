@@ -2,8 +2,8 @@
 id: 006
 title: 阅读器移动端交互设计
 labels: [wayfinder:prototype]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [001, 005]
 ---
 
@@ -22,4 +22,4 @@ web 端是「CSS 多栏分页仿真」。小程序移动阅读器的交互模型
 
 ## Resolution
 
-（待决议）
+改道决议：H5 阅读器采用「连续纵向滚动 + 段落间插图 + 浮层工具栏」，直接继承本票原型问题；由 H5 实现落地。

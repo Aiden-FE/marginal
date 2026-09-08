@@ -1,8 +1,9 @@
 // 实体卡（spec §4.4）：AI 提取 → 逐卡确认/修正 → 正典化；定妆照 AI 生成或上传。
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildIllustrationPrompt, sha256Hex, uuidv7, type EntityCard, type Work } from "@marginal/core";
+import { sha256Hex, uuidv7, type EntityCard, type Work } from "@marginal/core";
 import { store, useStore } from "../store";
+import { extractEntities, genPortrait as genPortraitAction, toggleCanon as toggleCanonAction } from "../actions";
 
 export function EntitiesView({ work }: { work: Work }) {
   useStore();
@@ -19,19 +20,8 @@ export function EntitiesView({ work }: { work: Work }) {
   async function extract() {
     setBusy("AI 提取设定中…");
     try {
-      const cfg = work.settings.taskConfigs.extract ?? store.defaultTaskConfig("extract");
-      const client = store.getClient(cfg.providerId);
-      const cs = await store.repo.listChapters(work.id);
-      const texts: Record<string, string> = {};
-      for (const c of cs) texts[c.id] = await store.repo.getChapterText(c.id);
-      const { extractEntityCards } = await import("@marginal/core");
-      const found = await extractEntityCards(client, cfg.model, work, texts);
-      for (const c of found) {
-        const dupe = cards.find((x) => x.name === c.name && x.kind === c.kind);
-        if (!dupe) await store.repo.putEntityCard(c);
-      }
+      await extractEntities(work);
       await load();
-      store.notify(`提取到 ${found.length} 张实体卡（草稿）`);
     } catch (err) {
       store.notify(`提取失败：${err instanceof Error ? err.message : err}`);
     } finally {
@@ -40,41 +30,13 @@ export function EntitiesView({ work }: { work: Work }) {
   }
 
   async function toggleCanon(card: EntityCard) {
-    if (card.status === "draft") {
-      await store.repo.putEntityCard({ ...card, status: "canon" });
-      store.notify(`「${card.name}」已正典——插图链路将携带其定妆照作参考图`);
-    } else {
-      if (!window.confirm(`将「${card.name}」降回草稿？其参考图资格随之失效。`)) return;
-      await store.repo.putEntityCard({ ...card, status: "draft" });
-    }
+    if (card.status === "canon" && !window.confirm(`将「${card.name}」降回草稿？其参考图资格随之失效。`)) return;
+    await toggleCanonAction(card);
     await load();
   }
 
-  async function genPortrait(card: EntityCard) {
-    setBusy("生成定妆照中…");
-    try {
-      const cfg = work.settings.taskConfigs.illustration ?? store.defaultTaskConfig("illustration");
-      const client = store.getClient(cfg.providerId);
-      const prompt = buildIllustrationPrompt(
-        `「${card.name}」的单人标准像，纯色背景，上半身，设定集风格`,
-        [card], false,
-      );
-      store.queue.add(`定妆照：${card.name}`, async () => {
-        const result = await client.generateImage({ prompt, references: [], model: cfg.model });
-        const bytes = Uint8Array.from(atob(result.dataBase64), (c) => c.charCodeAt(0));
-        const blobId = uuidv7();
-        const storageKey = `${work.id}/${blobId}`;
-        await store.repo.putBlob({
-          id: blobId, workId: work.id, kind: "image", byteSize: bytes.length,
-          mime: result.mime, sha256: await sha256Hex(bytes), storageKey,
-        }, bytes);
-        await store.repo.putEntityCard({ ...card, portraitBlobId: blobId });
-        await load();
-        store.notify(`「${card.name}」定妆照已生成`);
-      });
-    } finally {
-      setBusy("");
-    }
+  function genPortrait(card: EntityCard) {
+    genPortraitAction(work, card);
   }
 
   async function onUpload(file: File) {

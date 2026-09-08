@@ -2,8 +2,8 @@
 id: 008
 title: 小程序数据与多端同步
 labels: [wayfinder:grilling]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [002, 003]
 ---
 
@@ -21,4 +21,4 @@ blocked-by: [002, 003]
 
 ## Resolution
 
-（待决议）
+改道决议：H5 复用 web 全套数据层（sqlite-wasm→IndexedDB 自动降级），.mabk 全书包语义不变；无微信云/登录议题，本票关闭。

@@ -1,11 +1,12 @@
 // 插图管理（spec §4.4）：批量预扫候选段落 → 可编辑任务清单 → 入队；画廊接受/删除。
 
 import { useCallback, useEffect, useState } from "react";
-import { buildIllustrationPrompt, pickCandidateParagraphs, sha256Hex, uuidv7, splitParagraphs, type Illustration, type Work } from "@marginal/core";
+import { pickCandidateParagraphs, type Illustration, type Work } from "@marginal/core";
 import { store, useStore } from "../store";
+import { enqueueIllustrations } from "../actions";
 
 export function IllustrationsView({ work }: { work: Work }) {
-  useStore();
+  const version = useStore();
   const [illus, setIllus] = useState<Illustration[]>([]);
   const [candidates, setCandidates] = useState<{ chapterKey: string; paraIndex: number; preview: string }[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -15,7 +16,7 @@ export function IllustrationsView({ work }: { work: Work }) {
   const load = useCallback(async () => {
     setIllus(await store.repo.listIllustrations(work.id));
   }, [work.id]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, version]);
 
   function scan() {
     void (async () => {
@@ -38,52 +39,10 @@ export function IllustrationsView({ work }: { work: Work }) {
 
   function enqueue() {
     void (async () => {
-      const cfg = work.settings.taskConfigs.illustration ?? store.defaultTaskConfig("illustration");
-      const client = store.getClient(cfg.providerId);
-      const cards = (await store.repo.listEntityCards(work.id)).filter((c) => c.status === "canon");
-      const cs = await store.repo.listChapters(work.id);
-      const limit = work.settings.budgetLimit;
-      if (limit > 0) store.queue.setBudgetLimit(limit);
-      let enqueued = 0;
-      for (const c of candidates) {
-        const key = `${c.chapterKey}:${c.paraIndex}`;
-        if (!selected.has(key)) continue;
-        const ch = cs.find((x) => x.id === c.chapterKey);
-        if (!ch) continue;
-        const fullText = await store.repo.getChapterText(ch.id);
-        const paraText = splitParagraphs(fullText)[c.paraIndex] ?? "";
-        enqueued++;
-        store.queue.add(`插图：${ch.title}·段${c.paraIndex + 1}`, async () => {
-          const references: { mime: string; dataBase64: string }[] = [];
-          for (const card of cards.slice(0, 3)) {
-            if (!card.portraitBlobId) continue;
-            const meta = (await store.repo.listBlobs(work.id)).find((b) => b.id === card.portraitBlobId);
-            if (!meta) continue;
-            const data = await store.repo.getBlobData(meta.storageKey);
-            if (!data) continue;
-            let bin = "";
-            for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode(...data.subarray(i, i + 0x8000));
-            references.push({ mime: meta.mime, dataBase64: btoa(bin) });
-          }
-          const prompt = buildIllustrationPrompt(paraText.slice(0, 200), cards.slice(0, 3), references.length > 0);
-          const result = await client.generateImage({ prompt, references, model: cfg.model });
-          const bytes = Uint8Array.from(atob(result.dataBase64), (c2) => c2.charCodeAt(0));
-          const blobId = uuidv7();
-          const storageKey = `${work.id}/${blobId}`;
-          await store.repo.putBlob({
-            id: blobId, workId: work.id, kind: "image", byteSize: bytes.length,
-            mime: result.mime, sha256: await sha256Hex(bytes), storageKey,
-          }, bytes);
-          const illus2: Illustration = {
-            id: uuidv7(), workId: work.id, prompt, providerId: cfg.providerId, model: cfg.model,
-            blobId, status: "draft", genMeta: { referenceBlobIds: references.map((_, i) => String(i)) },
-            entityCardIds: cards.map((c2) => c2.id), createdAt: Date.now(),
-          };
-          await store.repo.putIllustration(illus2);
-          await load();
-        });
-      }
-      store.notify(`已入队 ${enqueued} 个插图任务${limit > 0 ? `（预算上限 ${limit} 次）` : ""}`);
+      const selectedCandidates = candidates
+        .filter((c) => selected.has(`${c.chapterKey}:${c.paraIndex}`))
+        .map((c) => ({ chapterKey: c.chapterKey, paraIndex: c.paraIndex }));
+      const enqueued = await enqueueIllustrations(work, selectedCandidates);
       setScene(`${scene} · ${enqueued}`);
     })();
   }

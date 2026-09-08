@@ -2,8 +2,8 @@
 id: 012
 title: 汇编微信小程序版 v1 规格
 labels: [wayfinder:task]
-status: open
-assignee: 
+status: closed
+assignee: Aiden
 blocked-by: [005, 006, 007, 008, 010, 011]
 ---
 
@@ -13,4 +13,4 @@ blocked-by: [005, 006, 007, 008, 010, 011]
 
 ## Resolution
 
-（待汇编）
+改道决议：不再产出 SPEC-WEAPP；H5 复用 docs/SPEC.md 领域模型，架构差异记录于 README，本票关闭。
