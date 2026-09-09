@@ -134,7 +134,20 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
       { timeout: 10_000 },
     ).toBeGreaterThan(savedRatio - 0.08);
 
+    // 段落操作面板：收藏 → 精彩段落列表 → 再配图
     await page.locator(".m-reader-para").first().click({ position: { x: 10, y: 10 } });
+    await page.getByRole("button", { name: /收藏段落/ }).click();
+    await waitForToast(page, "已收藏");
+    await expect(page.locator(".m-fav-mark").first()).toBeVisible();
+
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: /精彩段落/ }).click();
+    await expect(page.locator(".m-fav-item")).toHaveCount(1);
+    await page.getByRole("button", { name: "关闭" }).click();
+
+    await page.locator(".m-reader-para").first().click({ position: { x: 10, y: 10 } });
+    await page.getByRole("button", { name: /为段落配图/ }).click();
     await expect(page.getByRole("dialog", { name: "为段落配图" })).toBeVisible();
     await page.getByRole("button", { name: "加入生成队列" }).click();
     await waitForToast(page, "插图已插入锚点");

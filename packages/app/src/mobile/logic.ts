@@ -124,3 +124,58 @@ export function queueProgress(tasks: Pick<QueueTask, "state">[]): QueueProgress 
   const settled = done + failed;
   return { total, active, done, failed, ratio: total ? settled / total : 0 };
 }
+
+export interface ParagraphFavorite {
+  chapterId: string;
+  chapterTitle: string;
+  paraIndex: number;
+  text: string;
+  savedAt: number;
+}
+
+type FavoriteStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function favoritesKey(workId: string): string {
+  return `marginal.favorites.${workId}.v1`;
+}
+
+export function listFavorites(storage: Pick<Storage, "getItem">, workId: string): ParagraphFavorite[] {
+  const raw = storage.getItem(favoritesKey(workId));
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is ParagraphFavorite =>
+        typeof item === "object" && item !== null &&
+        typeof (item as ParagraphFavorite).chapterId === "string" &&
+        typeof (item as ParagraphFavorite).paraIndex === "number" &&
+        typeof (item as ParagraphFavorite).text === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveFavorites(storage: Pick<Storage, "setItem">, workId: string, favorites: ParagraphFavorite[]): void {
+  storage.setItem(favoritesKey(workId), JSON.stringify(favorites));
+}
+
+export function toggleFavorite(
+  storage: FavoriteStorage,
+  workId: string,
+  favorite: ParagraphFavorite,
+): { favorites: ParagraphFavorite[]; added: boolean } {
+  const favorites = listFavorites(storage, workId);
+  const index = favorites.findIndex(
+    (item) => item.chapterId === favorite.chapterId && item.paraIndex === favorite.paraIndex,
+  );
+  if (index >= 0) {
+    favorites.splice(index, 1);
+    saveFavorites(storage, workId, favorites);
+    return { favorites, added: false };
+  }
+  const next = [favorite, ...favorites];
+  saveFavorites(storage, workId, next);
+  return { favorites: next, added: true };
+}

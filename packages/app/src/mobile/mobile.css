@@ -24,6 +24,9 @@
   touch-action: manipulation;
 }
 .mobile-app *, .mobile-app *::before, .mobile-app *::after { box-sizing: border-box; }
+/* 真机滚动条为浮层自动隐藏；浏览器仿真下保持同样观感。 */
+.mobile-app * { scrollbar-width: none; }
+.mobile-app *::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .mobile-app button,
 .mobile-app input,
 .mobile-app select,
@@ -372,6 +375,7 @@
 .m-reader-para { margin: 0 0 .95em; text-indent: 2em; letter-spacing: .025em; overflow-wrap: anywhere; cursor: pointer; }
 .m-reader-para:active { background: rgba(173, 120, 53, .12); border-radius: 4px; }
 .m-anchor-mark { margin-left: 4px; color: var(--m-accent); font-size: .7em; }
+.m-fav-mark { margin-left: 4px; color: #d9a13c; font-size: .7em; }
 .m-reader .illus { display: block; width: 100%; height: auto; max-height: 60dvh; object-fit: contain; margin: 1.25em auto 1.8em; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.16); }
 .m-reader-end { margin: 56px 0 20px; color: rgba(122,116,106,.9); text-align: center; font: 12px/1.5 system-ui, sans-serif; }
 .m-reader-top { position: absolute; z-index: 35; top: 0; left: 0; right: 0; min-height: calc(60px + env(safe-area-inset-top)); padding: calc(8px + env(safe-area-inset-top)) 10px 8px; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px 44px; align-items: center; gap: 3px; color: #f7f1e7; background: rgba(28, 27, 24, .92); backdrop-filter: blur(17px); animation: m-fade .15s ease-out; }
@@ -504,3 +508,12 @@
 @media (prefers-reduced-motion: reduce) {
   .mobile-app *, .mobile-app *::before, .mobile-app *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Favorites */
+.m-fav-list { display: grid; gap: 11px; }
+.m-fav-item { padding: 12px; border: 1px solid var(--m-line); border-radius: 14px; background: var(--m-surface-2); }
+.m-fav-text { margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; color: var(--m-ink); font: 13px/1.7 "Songti SC", serif; }
+.m-fav-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 9px; }
+.m-fav-meta > span { min-width: 0; color: var(--m-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-fav-meta > div { display: flex; gap: 6px; flex: 0 0 auto; }
+.mobile-app .m-fav-meta button { min-height: 34px; padding: 4px 10px; font-size: 12px; }

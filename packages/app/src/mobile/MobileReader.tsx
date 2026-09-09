@@ -3,9 +3,10 @@ import { splitParagraphs, type Anchor, type Work } from "@marginal/core";
 import { generateIllustration } from "../actions";
 import { store, useStore } from "../store";
 import { IllustrationImage } from "../components/IllustrationImage";
-import { BottomSheet, MiniQueueProgress } from "./shared";
+import { ActionSheet, BottomSheet, MiniQueueProgress } from "./shared";
 import {
-  clampFontSize, loadReadingPosition, saveReadingPosition, scrollRatio, scrollTopForRatio,
+  clampFontSize, listFavorites, loadReadingPosition, saveFavorites, saveReadingPosition,
+  scrollRatio, scrollTopForRatio, toggleFavorite, type ParagraphFavorite,
 } from "./logic";
 import type { MobileWorkTab } from "./types";
 
@@ -35,6 +36,9 @@ export function MobileReader({
   );
   const [progress, setProgress] = useState(0);
   const [menu, setMenu] = useState(false);
+  const [paraMenu, setParaMenu] = useState<{ paraIndex: number; text: string } | null>(null);
+  const [favorites, setFavorites] = useState<ParagraphFavorite[]>([]);
+  const [showFavorites, setShowFavorites] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const chapterIdRef = useRef("");
   const restoredRef = useRef(false);
@@ -47,6 +51,10 @@ export function MobileReader({
     for (const anchor of anchors) map.set(anchor.paraIndex, anchor);
     return map;
   }, [anchors]);
+  const favParas = useMemo(
+    () => new Set(favorites.filter((item) => item.chapterId === chapterId).map((item) => item.paraIndex)),
+    [favorites, chapterId],
+  );
 
   const scrollTo = useCallback((ratio: number) => {
     const viewport = viewportRef.current;
@@ -69,6 +77,7 @@ export function MobileReader({
     void (async () => {
       const all = await store.repo.listChapters(work.id);
       setChapters(all.map((chapter) => ({ id: chapter.id, idx: chapter.idx, title: chapter.title })));
+      setFavorites(listFavorites(localStorage, work.id));
       const saved = loadReadingPosition(localStorage, work.id);
       const target = all.find((chapter) => chapter.id === saved?.chapterId) ?? all[0];
       if (target) {
@@ -140,6 +149,55 @@ export function MobileReader({
     await generateIllustration(work, chapterIdRef.current, paraIndex, sceneText);
   }
 
+  function toggleCurrentFavorite(paraIndex: number, paraText: string) {
+    const chapter = chapters.find((item) => item.id === chapterIdRef.current);
+    const { favorites: next, added } = toggleFavorite(localStorage, work.id, {
+      chapterId: chapterIdRef.current,
+      chapterTitle: chapter?.title ?? "",
+      paraIndex,
+      text: paraText,
+      savedAt: Date.now(),
+    });
+    setFavorites(next);
+    store.notify(added ? "段落已收藏" : "已取消收藏");
+  }
+
+  function removeFavorite(favorite: ParagraphFavorite) {
+    const next = favorites.filter(
+      (item) => !(item.chapterId === favorite.chapterId && item.paraIndex === favorite.paraIndex),
+    );
+    saveFavorites(localStorage, work.id, next);
+    setFavorites(next);
+  }
+
+  function jumpToFavorite(favorite: ParagraphFavorite) {
+    setShowFavorites(false);
+    if (favorite.chapterId !== chapterIdRef.current) {
+      void loadChapter(favorite.chapterId, 0).then(() => scrollParaIntoView(favorite.paraIndex));
+    } else {
+      scrollParaIntoView(favorite.paraIndex);
+    }
+  }
+
+  function scrollParaIntoView(paraIndex: number) {
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(`m-para-${paraIndex}`)?.scrollIntoView({ block: "center" });
+    })));
+  }
+
+  async function shareParagraph(paraText: string) {
+    const payload = `《${work.title}》精彩段落：\n${paraText}`;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: work.title, text: payload });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    store.notify((await copyText(payload)) ? "段落已复制，可粘贴分享" : "复制失败，请手动选择文本");
+  }
+
   const chapterTitle = chapters.find((chapter) => chapter.id === chapterId)?.title ?? "";
 
   return (
@@ -155,9 +213,10 @@ export function MobileReader({
           const anchor = anchorByPara.get(index);
           return (
             <div key={index}>
-              <p className="m-reader-para" onClick={() => setScene({ paraIndex: index, text: paragraph.slice(0, 120) })}>
+              <p id={`m-para-${index}`} className="m-reader-para" onClick={() => setParaMenu({ paraIndex: index, text: paragraph })}>
                 {paragraph}
                 {anchor && <span className="m-anchor-mark">◆</span>}
+                {favParas.has(index) && <span className="m-fav-mark">★</span>}
               </p>
               {anchor && <IllustrationImage anchor={anchor} workId={work.id} />}
             </div>
@@ -217,6 +276,22 @@ export function MobileReader({
         </BottomSheet>
       )}
 
+      {paraMenu && (
+        <ActionSheet
+          title={`第 ${paraMenu.paraIndex + 1} 段`}
+          onClose={() => setParaMenu(null)}
+          actions={[
+            { icon: "🎨", label: "为段落配图", onClick: () => setScene({ paraIndex: paraMenu.paraIndex, text: paraMenu.text.slice(0, 120) }) },
+            {
+              icon: favParas.has(paraMenu.paraIndex) ? "✨" : "⭐",
+              label: favParas.has(paraMenu.paraIndex) ? "取消收藏" : "收藏段落",
+              onClick: () => toggleCurrentFavorite(paraMenu.paraIndex, paraMenu.text),
+            },
+            { icon: "📤", label: "分享段落", onClick: () => void shareParagraph(paraMenu.text) },
+          ]}
+        />
+      )}
+
       {scene && (
         <BottomSheet title="为段落配图" onClose={() => setScene(null)}>
           <p className="m-scene-preview">{scene.text}…</p>
@@ -229,18 +304,60 @@ export function MobileReader({
         </BottomSheet>
       )}
 
+      {showFavorites && (
+        <BottomSheet title={`精彩段落（${favorites.length}）`} onClose={() => setShowFavorites(false)}>
+          {favorites.length === 0 && <p className="m-hint">还没有收藏。点按正文段落即可收藏或分享。</p>}
+          <div className="m-fav-list">
+            {favorites.map((favorite) => (
+              <div key={`${favorite.chapterId}:${favorite.paraIndex}`} className="m-fav-item">
+                <p className="m-fav-text" onClick={() => jumpToFavorite(favorite)}>{favorite.text}</p>
+                <div className="m-fav-meta">
+                  <span>{favorite.chapterTitle || "章节"}</span>
+                  <div>
+                    <button onClick={() => jumpToFavorite(favorite)}>去阅读</button>
+                    <button onClick={() => void shareParagraph(favorite.text)}>分享</button>
+                    <button onClick={() => removeFavorite(favorite)}>删除</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </BottomSheet>
+      )}
+
       {menu && (
         <BottomSheet title={work.title} onClose={() => setMenu(false)}>
           <div className="m-stack-actions">
             <button onClick={() => { setMenu(false); onOpenWorkTab("repair"); }}>🔧 修复与修订</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("entities"); }}>👤 实体卡</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("illustrations"); }}>🖼 插图任务</button>
+            <button onClick={() => { setMenu(false); setShowFavorites(true); }}>⭐ 精彩段落</button>
             <button onClick={() => { setMenu(false); onBack(); }}>📚 回到书架</button>
           </div>
         </BottomSheet>
       )}
     </section>
   );
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // 局域网 HTTP 或剪贴板权限被拒时，退回传统复制方式。
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  const copied = document.execCommand("copy");
+  area.remove();
+  return copied;
 }
 
 function IllustrationSceneForm({ defaultScene, onSubmit, onCancel }: { defaultScene: string; onSubmit: (value: string) => void; onCancel: () => void }) {

@@ -4,6 +4,7 @@ import {
   clampFontSize,
   clampRatio,
   detectUiMode,
+  listFavorites,
   loadReadingPosition,
   mergeChapterUp,
   queueProgress,
@@ -12,6 +13,7 @@ import {
   scrollRatio,
   scrollTopForRatio,
   splitChapterAt,
+  toggleFavorite,
 } from "./logic";
 
 const memory = () => {
@@ -135,5 +137,33 @@ describe("queueProgress", () => {
 
   it("空队列比例 0", () => {
     expect(queueProgress([]).ratio).toBe(0);
+  });
+});
+
+describe("段落收藏", () => {
+  const favorite = { chapterId: "c1", chapterTitle: "第一章", paraIndex: 3, text: "精彩段落", savedAt: 1 };
+
+  it("收藏/取消往返，同一章节同段落去重", () => {
+    const storage = memory();
+    const added = toggleFavorite(storage, "w1", favorite);
+    expect(added.added).toBe(true);
+    expect(added.favorites).toHaveLength(1);
+    const removed = toggleFavorite(storage, "w1", favorite);
+    expect(removed.added).toBe(false);
+    expect(removed.favorites).toHaveLength(0);
+    expect(listFavorites(storage, "w1")).toEqual([]);
+  });
+
+  it("不同段落分别收藏，新的排在最前", () => {
+    const storage = memory();
+    toggleFavorite(storage, "w1", { ...favorite, paraIndex: 1, savedAt: 1 });
+    const second = toggleFavorite(storage, "w1", { ...favorite, paraIndex: 5, savedAt: 2 });
+    expect(second.favorites.map((item) => item.paraIndex)).toEqual([5, 1]);
+  });
+
+  it("损坏数据返回空列表而不抛错", () => {
+    const storage = memory();
+    storage.setItem("marginal.favorites.w1.v1", "{oops");
+    expect(listFavorites(storage, "w1")).toEqual([]);
   });
 });
