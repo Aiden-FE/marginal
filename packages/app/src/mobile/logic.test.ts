@@ -4,6 +4,7 @@ import {
   clampFontSize,
   clampRatio,
   detectUiMode,
+  listChapterBookmarks,
   listFavorites,
   loadReadingPosition,
   mergeChapterUp,
@@ -13,6 +14,7 @@ import {
   scrollRatio,
   scrollTopForRatio,
   splitChapterAt,
+  toggleChapterBookmark,
   toggleFavorite,
 } from "./logic";
 
@@ -165,5 +167,31 @@ describe("段落收藏", () => {
     const storage = memory();
     storage.setItem("marginal.favorites.w1.v1", "{oops");
     expect(listFavorites(storage, "w1")).toEqual([]);
+  });
+});
+
+describe("章节书签", () => {
+  it("书签/取消往返，同一章节去重", () => {
+    const storage = memory();
+    const added = toggleChapterBookmark(storage, "w1", "c1", "第一章");
+    expect(added.added).toBe(true);
+    expect(added.bookmarks).toHaveLength(1);
+    expect(added.bookmarks[0]).toMatchObject({ chapterId: "c1", chapterTitle: "第一章" });
+    const removed = toggleChapterBookmark(storage, "w1", "c1", "第一章");
+    expect(removed.added).toBe(false);
+    expect(removed.bookmarks).toHaveLength(0);
+  });
+
+  it("多章书签新的排在最前", () => {
+    const storage = memory();
+    toggleChapterBookmark(storage, "w1", "c1", "一");
+    const second = toggleChapterBookmark(storage, "w1", "c2", "二");
+    expect(second.bookmarks.map((item) => item.chapterId)).toEqual(["c2", "c1"]);
+  });
+
+  it("损坏数据返回空列表而不抛错", () => {
+    const storage = memory();
+    storage.setItem("marginal.bookmarks.w1.v1", "{oops");
+    expect(listChapterBookmarks(storage, "w1")).toEqual([]);
   });
 });

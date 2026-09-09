@@ -179,3 +179,52 @@ export function toggleFavorite(
   saveFavorites(storage, workId, next);
   return { favorites: next, added: true };
 }
+
+export interface ChapterBookmark {
+  chapterId: string;
+  chapterTitle: string;
+  addedAt: number;
+}
+
+export function chapterBookmarksKey(workId: string): string {
+  return `marginal.bookmarks.${workId}.v1`;
+}
+
+export function listChapterBookmarks(storage: Pick<Storage, "getItem">, workId: string): ChapterBookmark[] {
+  const raw = storage.getItem(chapterBookmarksKey(workId));
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is ChapterBookmark =>
+        typeof item === "object" && item !== null &&
+        typeof (item as ChapterBookmark).chapterId === "string" &&
+        typeof (item as ChapterBookmark).chapterTitle === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveChapterBookmarks(storage: Pick<Storage, "setItem">, workId: string, bookmarks: ChapterBookmark[]): void {
+  storage.setItem(chapterBookmarksKey(workId), JSON.stringify(bookmarks));
+}
+
+export function toggleChapterBookmark(
+  storage: Pick<Storage, "getItem" | "setItem">,
+  workId: string,
+  chapterId: string,
+  chapterTitle: string,
+): { bookmarks: ChapterBookmark[]; added: boolean } {
+  const bookmarks = listChapterBookmarks(storage, workId);
+  const index = bookmarks.findIndex((item) => item.chapterId === chapterId);
+  if (index >= 0) {
+    bookmarks.splice(index, 1);
+    saveChapterBookmarks(storage, workId, bookmarks);
+    return { bookmarks, added: false };
+  }
+  const next = [{ chapterId, chapterTitle, addedAt: Date.now() }, ...bookmarks];
+  saveChapterBookmarks(storage, workId, next);
+  return { bookmarks: next, added: true };
+}

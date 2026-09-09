@@ -3,6 +3,7 @@ import type { Work } from "@marginal/core";
 import { exportBundle } from "../actions";
 import { store, useStore } from "../store";
 import { ActionSheet, BottomSheet } from "./shared";
+import { loadReadingPosition } from "./logic";
 import type { MobileWorkTab } from "./types";
 
 export function MobileLibrary({
@@ -14,13 +15,23 @@ export function MobileLibrary({
 }) {
   const version = useStore();
   const [chapterCounts, setChapterCounts] = useState<Record<string, number>>({});
+  const [readingLabels, setReadingLabels] = useState<Record<string, string>>({});
   const [actionWork, setActionWork] = useState<Work | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Work | null>(null);
   const [busy, setBusy] = useState("");
 
   const loadCounts = useCallback(async () => {
-    const entries = await Promise.all(store.works.map(async (work) => [work.id, (await store.repo.listChapters(work.id)).length] as const));
-    setChapterCounts(Object.fromEntries(entries));
+    const entries = await Promise.all(store.works.map(async (work) => {
+      const chapters = await store.repo.listChapters(work.id);
+      const position = loadReadingPosition(localStorage, work.id);
+      const index = position ? chapters.findIndex((chapter) => chapter.id === position.chapterId) : -1;
+      return [work.id, {
+        count: chapters.length,
+        label: index >= 0 ? `上次读到 第${index + 1}章` : "",
+      }] as const;
+    }));
+    setChapterCounts(Object.fromEntries(entries.map(([id, value]) => [id, value.count])));
+    setReadingLabels(Object.fromEntries(entries.map(([id, value]) => [id, value.label])));
   }, [version]);
   useEffect(() => { void loadCounts(); }, [loadCounts]);
 
@@ -66,7 +77,7 @@ export function MobileLibrary({
             <div className="m-book-info">
               <h3>{work.title}</h3>
               <p>{chapterCounts[work.id] ?? "…"} 章 · {new Date(work.updatedAt).toLocaleDateString()}</p>
-              <span>{work.importSource}</span>
+              <span>{readingLabels[work.id] || work.importSource}</span>
             </div>
             <button
               className="m-icon-btn m-book-more"

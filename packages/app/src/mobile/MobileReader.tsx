@@ -5,8 +5,9 @@ import { store, useStore } from "../store";
 import { IllustrationImage } from "../components/IllustrationImage";
 import { ActionSheet, BottomSheet, MiniQueueProgress } from "./shared";
 import {
-  clampFontSize, listFavorites, loadReadingPosition, saveFavorites, saveReadingPosition,
-  scrollRatio, scrollTopForRatio, toggleFavorite, type ParagraphFavorite,
+  clampFontSize, listChapterBookmarks, listFavorites, loadReadingPosition, saveFavorites, saveReadingPosition,
+  scrollRatio, scrollTopForRatio, toggleChapterBookmark, toggleFavorite,
+  type ChapterBookmark, type ParagraphFavorite,
 } from "./logic";
 import type { MobileWorkTab } from "./types";
 
@@ -39,6 +40,8 @@ export function MobileReader({
   const [paraMenu, setParaMenu] = useState<{ paraIndex: number; text: string } | null>(null);
   const [favorites, setFavorites] = useState<ParagraphFavorite[]>([]);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [bookmarks, setBookmarks] = useState<ChapterBookmark[]>([]);
+  const [showBookmarks, setShowBookmarks] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const chapterIdRef = useRef("");
   const restoredRef = useRef(false);
@@ -55,6 +58,7 @@ export function MobileReader({
     () => new Set(favorites.filter((item) => item.chapterId === chapterId).map((item) => item.paraIndex)),
     [favorites, chapterId],
   );
+  const bookmarkIds = useMemo(() => new Set(bookmarks.map((item) => item.chapterId)), [bookmarks]);
 
   const scrollTo = useCallback((ratio: number) => {
     const viewport = viewportRef.current;
@@ -78,6 +82,7 @@ export function MobileReader({
       const all = await store.repo.listChapters(work.id);
       setChapters(all.map((chapter) => ({ id: chapter.id, idx: chapter.idx, title: chapter.title })));
       setFavorites(listFavorites(localStorage, work.id));
+      setBookmarks(listChapterBookmarks(localStorage, work.id));
       const saved = loadReadingPosition(localStorage, work.id);
       const target = all.find((chapter) => chapter.id === saved?.chapterId) ?? all[0];
       if (target) {
@@ -168,6 +173,23 @@ export function MobileReader({
     );
     saveFavorites(localStorage, work.id, next);
     setFavorites(next);
+  }
+
+  function toggleChapterMark(chapter: { id: string; title: string }) {
+    const { bookmarks: next, added } = toggleChapterBookmark(localStorage, work.id, chapter.id, chapter.title);
+    setBookmarks(next);
+    store.notify(added ? `已书签「${chapter.title}」` : "已取消书签");
+  }
+
+  function removeChapterMark(chapterId: string, chapterTitle: string) {
+    const { bookmarks: next } = toggleChapterBookmark(localStorage, work.id, chapterId, chapterTitle);
+    setBookmarks(next);
+    store.notify("已取消书签");
+  }
+
+  function jumpToBookmarkChapter(chapterId: string) {
+    setShowBookmarks(false);
+    if (chapterId !== chapterIdRef.current) void loadChapter(chapterId, 0);
   }
 
   function jumpToFavorite(favorite: ParagraphFavorite) {
@@ -268,9 +290,19 @@ export function MobileReader({
         <BottomSheet title="章节目录" onClose={() => setShowChapters(false)}>
           <div className="m-chapter-list">
             {chapters.map((chapter) => (
-              <button key={chapter.id} className={chapter.id === chapterId ? "active" : ""} onClick={() => pickChapter(chapter.id)}>
-                <span>{chapter.idx + 1}</span>{chapter.title}
-              </button>
+              <div key={chapter.id} className="m-chapter-row">
+                <button
+                  className={chapter.id === chapterId ? "active" : ""}
+                  onClick={() => pickChapter(chapter.id)}
+                >
+                  <span>{chapter.idx + 1}</span>{chapter.title}
+                </button>
+                <button
+                  className={`m-toc-bookmark${bookmarkIds.has(chapter.id) ? " on" : ""}`}
+                  aria-label={bookmarkIds.has(chapter.id) ? `取消书签：${chapter.title}` : `添加书签：${chapter.title}`}
+                  onClick={() => toggleChapterMark(chapter)}
+                >★</button>
+              </div>
             ))}
           </div>
         </BottomSheet>
@@ -304,6 +336,26 @@ export function MobileReader({
         </BottomSheet>
       )}
 
+      {showBookmarks && (
+        <BottomSheet title={`书签（${bookmarks.length}）`} onClose={() => setShowBookmarks(false)}>
+          {bookmarks.length === 0 && <p className="m-hint">还没有书签。在章节目录里点 ★ 收藏章节，随时跳回。</p>}
+          <div className="m-fav-list">
+            {bookmarks.map((bookmark) => (
+              <div key={bookmark.chapterId} className="m-fav-item">
+                <p className="m-fav-text" onClick={() => jumpToBookmarkChapter(bookmark.chapterId)}>{bookmark.chapterTitle}</p>
+                <div className="m-fav-meta">
+                  <span>{new Date(bookmark.addedAt).toLocaleDateString()}</span>
+                  <div>
+                    <button onClick={() => jumpToBookmarkChapter(bookmark.chapterId)}>去阅读</button>
+                    <button onClick={() => removeChapterMark(bookmark.chapterId, bookmark.chapterTitle)}>取消书签</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </BottomSheet>
+      )}
+
       {showFavorites && (
         <BottomSheet title={`精彩段落（${favorites.length}）`} onClose={() => setShowFavorites(false)}>
           {favorites.length === 0 && <p className="m-hint">还没有收藏。点按正文段落即可收藏或分享。</p>}
@@ -331,6 +383,7 @@ export function MobileReader({
             <button onClick={() => { setMenu(false); onOpenWorkTab("repair"); }}>🔧 修复与修订</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("entities"); }}>👤 实体卡</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("illustrations"); }}>🖼 插图任务</button>
+            <button onClick={() => { setMenu(false); setShowBookmarks(true); }}>🔖 书签</button>
             <button onClick={() => { setMenu(false); setShowFavorites(true); }}>⭐ 精彩段落</button>
             <button onClick={() => { setMenu(false); onBack(); }}>📚 回到书架</button>
           </div>

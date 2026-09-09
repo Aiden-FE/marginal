@@ -34,7 +34,7 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     // 验证阅读器章节数与预览一致（核心回归：切分结果正确回传）
     await showReaderChrome(page);
     await page.getByRole("button", { name: "章节目录" }).click();
-    const chapters = page.locator(".m-chapter-list button");
+    const chapters = page.locator(".m-chapter-row > button:first-child");
     const total = await chapters.count();
     expect(total).toBe(initialChapters.initial);
     await expect(page.locator(".m-reader-title")).toBeVisible();
@@ -145,6 +145,22 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     await page.getByRole("button", { name: /精彩段落/ }).click();
     await expect(page.locator(".m-fav-item")).toHaveCount(1);
     await page.getByRole("button", { name: "关闭" }).click();
+
+    // 章节书签：目录标星 → 书签页 → 跳转
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "章节目录" }).click();
+    const tocRows = page.locator(".m-chapter-row");
+    await tocRows.nth(1).getByRole("button", { name: /^添加书签/ }).click();
+    await waitForToast(page, "已书签");
+    const secondTitle = (await tocRows.nth(1).locator("button").first().innerText()).replace(/^\s*\d+\s*/, "").trim();
+    await page.getByRole("button", { name: "关闭" }).click();
+
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: "🔖 书签" }).click();
+    await expect(page.locator(".m-fav-item")).toHaveCount(1);
+    await page.getByRole("button", { name: "去阅读" }).click();
+    await expect(page.locator(".m-reader-title")).toHaveText(secondTitle);
 
     await page.locator(".m-reader-para").first().click({ position: { x: 10, y: 10 } });
     await page.getByRole("button", { name: /为段落配图/ }).click();
