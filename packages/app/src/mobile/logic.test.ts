@@ -11,6 +11,7 @@ import {
   queueProgress,
   readingPositionKey,
   saveReadingPosition,
+  searchChapters,
   scrollRatio,
   scrollTopForRatio,
   splitChapterAt,
@@ -193,5 +194,37 @@ describe("章节书签", () => {
     const storage = memory();
     storage.setItem("marginal.bookmarks.w1.v1", "{oops");
     expect(listChapterBookmarks(storage, "w1")).toEqual([]);
+  });
+});
+
+
+describe("全书搜索", () => {
+  const repo = {
+    listChapters: async () => [
+      { id: "c1", idx: 0, title: "第一章" },
+      { id: "c2", idx: 1, title: "第二章" },
+    ],
+    getChapterText: async (id: string) => id === "c1"
+      ? "风从北边来。\n\n小满记得那座桥。\n\n后来又说起小满。"
+      : "桥下没有人。\n\n灯在雨里亮着。",
+  };
+
+  it("跨章扫描并按章节聚合命中", async () => {
+    const hits = await searchChapters(repo, "w1", "桥");
+    expect(hits).toHaveLength(2);
+    expect(hits[0]).toMatchObject({ chapterId: "c1", firstParaIndex: 1, count: 1 });
+    expect(hits[1]).toMatchObject({ chapterId: "c2", firstParaIndex: 0, count: 1 });
+  });
+
+  it("同一章多处命中只返回一项并累计次数", async () => {
+    const hits = await searchChapters(repo, "w1", "小满");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ chapterTitle: "第一章", count: 2 });
+    expect(hits[0].context).toContain("小满");
+  });
+
+  it("空关键词或无结果返回空列表", async () => {
+    expect(await searchChapters(repo, "w1", "   ")).toEqual([]);
+    expect(await searchChapters(repo, "w1", "不存在")).toEqual([]);
   });
 });

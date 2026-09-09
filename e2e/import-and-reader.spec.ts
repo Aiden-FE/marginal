@@ -162,6 +162,25 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     await page.getByRole("button", { name: "去阅读" }).click();
     await expect(page.locator(".m-reader-title")).toHaveText(secondTitle);
 
+    // 全书搜索：跨章命中 → 点击跳转定位；无结果路径
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: "全书搜索" }).click();
+    await page.getByLabel("搜索关键词").fill("掌柜");
+    const hits = page.locator(".m-search-hit");
+    await expect(hits.first()).toBeVisible({ timeout: 10_000 });
+    expect(await hits.count()).toBeGreaterThanOrEqual(2);
+    const firstChapter = (await hits.first().locator(".m-search-chapter").innerText()).replace(/^\s*\d+\.\s*/, "").trim();
+    await hits.first().click();
+    await expect(page.locator(".m-reader-title")).toHaveText(firstChapter);
+
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: "全书搜索" }).click();
+    await page.getByLabel("搜索关键词").fill("绝不存在的关键词");
+    await expect(page.getByText("未找到匹配内容")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "关闭" }).click();
+
     await page.locator(".m-reader-para").first().click({ position: { x: 10, y: 10 } });
     await page.getByRole("button", { name: /为段落配图/ }).click();
     await expect(page.getByRole("dialog", { name: "为段落配图" })).toBeVisible();

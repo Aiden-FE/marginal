@@ -5,9 +5,9 @@ import { store, useStore } from "../store";
 import { IllustrationImage } from "../components/IllustrationImage";
 import { ActionSheet, BottomSheet, MiniQueueProgress } from "./shared";
 import {
-  clampFontSize, listChapterBookmarks, listFavorites, loadReadingPosition, saveFavorites, saveReadingPosition,
-  scrollRatio, scrollTopForRatio, toggleChapterBookmark, toggleFavorite,
-  type ChapterBookmark, type ParagraphFavorite,
+  clampFontSize, listChapterBookmarks, listFavorites, loadReadingPosition, saveChapterBookmarks, saveFavorites,
+  saveReadingPosition, scrollRatio, scrollTopForRatio, searchChapters, toggleChapterBookmark, toggleFavorite,
+  type BookSearchHit, type ChapterBookmark, type ParagraphFavorite,
 } from "./logic";
 import type { MobileWorkTab } from "./types";
 
@@ -42,11 +42,18 @@ export function MobileReader({
   const [showFavorites, setShowFavorites] = useState(false);
   const [bookmarks, setBookmarks] = useState<ChapterBookmark[]>([]);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BookSearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [loadingChapterId, setLoadingChapterId] = useState("");
   const viewportRef = useRef<HTMLDivElement>(null);
   const chapterIdRef = useRef("");
   const restoredRef = useRef(false);
   const ratioRef = useRef(0);
   const saveTimer = useRef<number | null>(null);
+  const loadSeqRef = useRef(0);
+  const searchSeqRef = useRef(0);
 
   const paragraphs = useMemo(() => splitParagraphs(text), [text]);
   const anchorByPara = useMemo(() => {
@@ -66,17 +73,44 @@ export function MobileReader({
     viewport.scrollTop = scrollTopForRatio(ratio, viewport.scrollHeight, viewport.clientHeight);
   }, []);
 
-  const loadChapter = useCallback(async (id: string, ratio: number) => {
+  const flushPosition = useCallback(() => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (chapterIdRef.current) {
+      saveReadingPosition(localStorage, work.id, { chapterId: chapterIdRef.current, scrollRatio: ratioRef.current });
+    }
+  }, [work.id]);
+
+  // 统一的安全切章：先快照保存旧章，正文+锚点读全后一次性提交，过期请求直接丢弃
+  const switchChapter = useCallback(async (id: string, ratio: number) => {
+    const seq = ++loadSeqRef.current;
+    const previousId = chapterIdRef.current;
+    const previousRatio = ratioRef.current;
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (previousId) saveReadingPosition(localStorage, work.id, { chapterId: previousId, scrollRatio: previousRatio });
+    setLoadingChapterId(id);
+    const [nextText, allAnchors] = await Promise.all([
+      store.repo.getChapterText(id),
+      store.repo.listAnchors(work.id),
+    ]);
+    if (seq !== loadSeqRef.current) return false;
     chapterIdRef.current = id;
     setChapterId(id);
-    setText(await store.repo.getChapterText(id));
-    setAnchors((await store.repo.listAnchors(work.id)).filter((anchor) => anchor.chapterId === id && anchor.state === "active"));
+    setText(nextText);
+    setAnchors(allAnchors.filter((anchor) => anchor.chapterId === id && anchor.state === "active"));
     setProgress(ratio);
     ratioRef.current = ratio;
+    setLoadingChapterId("");
     requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(ratio)));
+    return true;
   }, [work.id, scrollTo]);
 
-  // 首次进入：恢复上次阅读位置
+  // 首次进入：恢复上次阅读位置；章节结构重切后位置失效则回退并提示
   useEffect(() => {
     void (async () => {
       const all = await store.repo.listChapters(work.id);
@@ -84,19 +118,53 @@ export function MobileReader({
       setFavorites(listFavorites(localStorage, work.id));
       setBookmarks(listChapterBookmarks(localStorage, work.id));
       const saved = loadReadingPosition(localStorage, work.id);
+      if (saved && !all.some((chapter) => chapter.id === saved.chapterId)) {
+        store.notify("原阅读位置因章节结构变更已失效，已回到第一章");
+      }
       const target = all.find((chapter) => chapter.id === saved?.chapterId) ?? all[0];
       if (target) {
-        await loadChapter(target.id, saved && target.id === saved.chapterId ? saved.scrollRatio : 0);
+        await switchChapter(target.id, saved && target.id === saved.chapterId ? saved.scrollRatio : 0);
       }
       restoredRef.current = true;
     })();
     return () => {
-      if (chapterIdRef.current) {
-        saveReadingPosition(localStorage, work.id, { chapterId: chapterIdRef.current, scrollRatio: ratioRef.current });
-      }
+      loadSeqRef.current++;
+      flushPosition();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [work.id]);
+
+  // 章节重切后清理失效的书签/收藏（旧章节 ID 已不存在）
+  useEffect(() => {
+    if (chapters.length === 0) return;
+    const validIds = new Set(chapters.map((chapter) => chapter.id));
+    const rawBookmarks = listChapterBookmarks(localStorage, work.id);
+    const rawFavorites = listFavorites(localStorage, work.id);
+    const cleanBookmarks = rawBookmarks.filter((item) => validIds.has(item.chapterId));
+    const cleanFavorites = rawFavorites.filter((item) => validIds.has(item.chapterId));
+    if (cleanBookmarks.length !== rawBookmarks.length) {
+      saveChapterBookmarks(localStorage, work.id, cleanBookmarks);
+      setBookmarks(cleanBookmarks);
+    }
+    if (cleanFavorites.length !== rawFavorites.length) {
+      saveFavorites(localStorage, work.id, cleanFavorites);
+      setFavorites(cleanFavorites);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapters, work.id]);
+
+  // 移动端后台/关页时同步落盘，React 卸载不保证发生
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flushPosition();
+    };
+    window.addEventListener("pagehide", flushPosition);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushPosition);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
+  }, [flushPosition]);
 
   // 队列有新插图落地时刷新锚点（不重置滚动位置）
   useEffect(() => {
@@ -107,6 +175,36 @@ export function MobileReader({
     })();
   }, [version, work.id]);
 
+  // 搜索防抖 + 旧结果不覆盖新结果
+  useEffect(() => {
+    if (!showSearch) return;
+    const seq = ++searchSeqRef.current;
+    const token = window.setTimeout(() => {
+      void (async () => {
+        const keyword = query.trim();
+        if (!keyword) {
+          setResults([]);
+          setSearching(false);
+          return;
+        }
+        setSearching(true);
+        const hits = await searchChapters(store.repo, work.id, keyword);
+        if (seq !== searchSeqRef.current) return;
+        setResults(hits);
+        setSearching(false);
+      })();
+    }, 300);
+    return () => window.clearTimeout(token);
+  }, [query, showSearch, work.id]);
+
+  // 目录打开后把当前章滚到可视区中央
+  useEffect(() => {
+    if (!showChapters) return;
+    requestAnimationFrame(() => {
+      document.querySelector(".m-chapter-row > button.active")?.scrollIntoView({ block: "center" });
+    });
+  }, [showChapters]);
+
   function onScroll() {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -114,23 +212,22 @@ export function MobileReader({
     ratioRef.current = ratio;
     setProgress(ratio);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    const snapshot = { chapterId: chapterIdRef.current, scrollRatio: ratio };
     saveTimer.current = window.setTimeout(() => {
-      if (chapterIdRef.current) {
-        saveReadingPosition(localStorage, work.id, { chapterId: chapterIdRef.current, scrollRatio: ratioRef.current });
-      }
+      if (snapshot.chapterId) saveReadingPosition(localStorage, work.id, snapshot);
     }, 400);
   }
 
   function pickChapter(id: string) {
     setShowChapters(false);
     if (id === chapterId) return;
-    void loadChapter(id, 0);
+    void switchChapter(id, 0);
   }
 
   function stepChapter(delta: number) {
     const index = chapters.findIndex((chapter) => chapter.id === chapterId);
     const next = chapters[index + delta];
-    if (next) void loadChapter(next.id, 0);
+    if (next && !loadingChapterId) void switchChapter(next.id, 0);
   }
 
   function changeFont(delta: number) {
@@ -154,6 +251,23 @@ export function MobileReader({
     await generateIllustration(work, chapterIdRef.current, paraIndex, sceneText);
   }
 
+  function toggleChapterMark(chapter: { id: string; title: string }) {
+    const { bookmarks: next, added } = toggleChapterBookmark(localStorage, work.id, chapter.id, chapter.title);
+    setBookmarks(next);
+    store.notify(added ? `已书签「${chapter.title}」` : "已取消书签");
+  }
+
+  function removeChapterMark(chapterIdToRemove: string, chapterTitle: string) {
+    const { bookmarks: next } = toggleChapterBookmark(localStorage, work.id, chapterIdToRemove, chapterTitle);
+    setBookmarks(next);
+    store.notify("已取消书签");
+  }
+
+  function jumpToBookmarkChapter(bookmarkChapterId: string) {
+    setShowBookmarks(false);
+    if (bookmarkChapterId !== chapterIdRef.current) void switchChapter(bookmarkChapterId, 0);
+  }
+
   function toggleCurrentFavorite(paraIndex: number, paraText: string) {
     const chapter = chapters.find((item) => item.id === chapterIdRef.current);
     const { favorites: next, added } = toggleFavorite(localStorage, work.id, {
@@ -175,36 +289,34 @@ export function MobileReader({
     setFavorites(next);
   }
 
-  function toggleChapterMark(chapter: { id: string; title: string }) {
-    const { bookmarks: next, added } = toggleChapterBookmark(localStorage, work.id, chapter.id, chapter.title);
-    setBookmarks(next);
-    store.notify(added ? `已书签「${chapter.title}」` : "已取消书签");
-  }
-
-  function removeChapterMark(chapterId: string, chapterTitle: string) {
-    const { bookmarks: next } = toggleChapterBookmark(localStorage, work.id, chapterId, chapterTitle);
-    setBookmarks(next);
-    store.notify("已取消书签");
-  }
-
-  function jumpToBookmarkChapter(chapterId: string) {
-    setShowBookmarks(false);
-    if (chapterId !== chapterIdRef.current) void loadChapter(chapterId, 0);
+  function scrollParaIntoView(paraIndex: number) {
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(`m-para-${paraIndex}`)?.scrollIntoView({ block: "center" });
+    })));
   }
 
   function jumpToFavorite(favorite: ParagraphFavorite) {
     setShowFavorites(false);
     if (favorite.chapterId !== chapterIdRef.current) {
-      void loadChapter(favorite.chapterId, 0).then(() => scrollParaIntoView(favorite.paraIndex));
+      void switchChapter(favorite.chapterId, 0).then((applied) => {
+        if (applied) scrollParaIntoView(favorite.paraIndex);
+      });
     } else {
       scrollParaIntoView(favorite.paraIndex);
     }
   }
 
-  function scrollParaIntoView(paraIndex: number) {
-    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-      document.getElementById(`m-para-${paraIndex}`)?.scrollIntoView({ block: "center" });
-    })));
+  function openSearchHit(hit: BookSearchHit) {
+    setShowSearch(false);
+    setQuery("");
+    setResults([]);
+    if (hit.chapterId !== chapterIdRef.current) {
+      void switchChapter(hit.chapterId, 0).then((applied) => {
+        if (applied) scrollParaIntoView(hit.firstParaIndex);
+      });
+    } else {
+      scrollParaIntoView(hit.firstParaIndex);
+    }
   }
 
   async function shareParagraph(paraText: string) {
@@ -221,6 +333,7 @@ export function MobileReader({
   }
 
   const chapterTitle = chapters.find((chapter) => chapter.id === chapterId)?.title ?? "";
+  const currentBookmarked = chapterId !== "" && bookmarkIds.has(chapterId);
 
   return (
     <section className={`m-reader theme-${theme}`} aria-label="阅读器">
@@ -231,6 +344,7 @@ export function MobileReader({
         style={{ fontSize }}
       >
         <h2 className="m-reader-title">{chapterTitle}</h2>
+        {loadingChapterId && <div className="m-reader-loading">加载中…</div>}
         {paragraphs.map((paragraph, index) => {
           const anchor = anchorByPara.get(index);
           return (
@@ -265,6 +379,12 @@ export function MobileReader({
           <header className="m-reader-top">
             <button className="m-icon-btn" aria-label="返回书架" onClick={onBack}>‹</button>
             <div className="m-reader-heading"><strong>{work.title}</strong><span>{chapterTitle}</span></div>
+            <button
+              className={`m-icon-btn m-reader-star${currentBookmarked ? " on" : ""}`}
+              aria-label={currentBookmarked ? `取消书签：${chapterTitle}` : `书签本章：${chapterTitle}`}
+              aria-pressed={currentBookmarked}
+              onClick={() => toggleChapterMark({ id: chapterId, title: chapterTitle })}
+            >★</button>
             <button className="m-icon-btn" aria-label="章节目录" onClick={() => setShowChapters(true)}>☰</button>
             <button className="m-icon-btn" aria-label="更多操作" onClick={() => setMenu(true)}>⋯</button>
           </header>
@@ -275,11 +395,11 @@ export function MobileReader({
               <span>{chapters.findIndex((chapter) => chapter.id === chapterId) + 1}/{chapters.length}</span>
             </div>
             <div className="m-reader-actions">
-              <button onClick={() => stepChapter(-1)} disabled={chapters.findIndex((chapter) => chapter.id === chapterId) <= 0}>上一章</button>
+              <button onClick={() => stepChapter(-1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) <= 0}>上一章</button>
               <button aria-label="减小字号" onClick={() => changeFont(-2)}>A−</button>
               <button aria-label="增大字号" onClick={() => changeFont(2)}>A＋</button>
               <button onClick={toggleTheme}>{theme === "paper" ? "🌙 夜间" : "☀️ 日间"}</button>
-              <button onClick={() => stepChapter(1)} disabled={chapters.findIndex((chapter) => chapter.id === chapterId) === chapters.length - 1}>下一章</button>
+              <button onClick={() => stepChapter(1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) === chapters.length - 1}>下一章</button>
             </div>
             <MiniQueueProgress />
           </footer>
@@ -300,6 +420,7 @@ export function MobileReader({
                 <button
                   className={`m-toc-bookmark${bookmarkIds.has(chapter.id) ? " on" : ""}`}
                   aria-label={bookmarkIds.has(chapter.id) ? `取消书签：${chapter.title}` : `添加书签：${chapter.title}`}
+                  aria-pressed={bookmarkIds.has(chapter.id)}
                   onClick={() => toggleChapterMark(chapter)}
                 >★</button>
               </div>
@@ -336,13 +457,36 @@ export function MobileReader({
         </BottomSheet>
       )}
 
+      {showSearch && (
+        <BottomSheet title="全书搜索" onClose={() => setShowSearch(false)}>
+          <input
+            aria-label="搜索关键词"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="输入关键词定位章节"
+            autoFocus
+          />
+          {searching && <p className="m-hint">搜索中…</p>}
+          {!searching && query.trim() && results.length === 0 && <p className="m-hint">未找到匹配内容。</p>}
+          <div className="m-search-list">
+            {results.map((hit) => (
+              <button key={hit.chapterId} className="m-search-hit" onClick={() => openSearchHit(hit)}>
+                <span className="m-search-chapter">{hit.idx + 1}. {hit.chapterTitle}</span>
+                <span className="m-search-context">…{hit.context}…</span>
+                <span className="m-search-count">{hit.count} 处</span>
+              </button>
+            ))}
+          </div>
+        </BottomSheet>
+      )}
+
       {showBookmarks && (
         <BottomSheet title={`书签（${bookmarks.length}）`} onClose={() => setShowBookmarks(false)}>
           {bookmarks.length === 0 && <p className="m-hint">还没有书签。在章节目录里点 ★ 收藏章节，随时跳回。</p>}
           <div className="m-fav-list">
             {bookmarks.map((bookmark) => (
               <div key={bookmark.chapterId} className="m-fav-item">
-                <p className="m-fav-text" onClick={() => jumpToBookmarkChapter(bookmark.chapterId)}>{bookmark.chapterTitle}</p>
+                <button className="m-fav-title" onClick={() => jumpToBookmarkChapter(bookmark.chapterId)}>{bookmark.chapterTitle}</button>
                 <div className="m-fav-meta">
                   <span>{new Date(bookmark.addedAt).toLocaleDateString()}</span>
                   <div>
@@ -362,7 +506,7 @@ export function MobileReader({
           <div className="m-fav-list">
             {favorites.map((favorite) => (
               <div key={`${favorite.chapterId}:${favorite.paraIndex}`} className="m-fav-item">
-                <p className="m-fav-text" onClick={() => jumpToFavorite(favorite)}>{favorite.text}</p>
+                <p className="m-fav-text">{favorite.text}</p>
                 <div className="m-fav-meta">
                   <span>{favorite.chapterTitle || "章节"}</span>
                   <div>
@@ -380,11 +524,12 @@ export function MobileReader({
       {menu && (
         <BottomSheet title={work.title} onClose={() => setMenu(false)}>
           <div className="m-stack-actions">
+            <button onClick={() => { setMenu(false); setShowSearch(true); }}>🔍 全书搜索</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("repair"); }}>🔧 修复与修订</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("entities"); }}>👤 实体卡</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("illustrations"); }}>🖼 插图任务</button>
-            <button onClick={() => { setMenu(false); setShowBookmarks(true); }}>🔖 书签</button>
-            <button onClick={() => { setMenu(false); setShowFavorites(true); }}>⭐ 精彩段落</button>
+            <button onClick={() => { setMenu(false); setShowBookmarks(true); }}>🔖 书签（{bookmarks.length}）</button>
+            <button onClick={() => { setMenu(false); setShowFavorites(true); }}>⭐ 精彩段落（{favorites.length}）</button>
             <button onClick={() => { setMenu(false); onBack(); }}>📚 回到书架</button>
           </div>
         </BottomSheet>

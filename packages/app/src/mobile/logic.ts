@@ -1,4 +1,4 @@
-import type { ProposedChapter, QueueTask } from "@marginal/core";
+import { splitParagraphs, type ProposedChapter, type QueueTask } from "@marginal/core";
 
 export type UiMode = "mobile" | "desktop";
 
@@ -227,4 +227,48 @@ export function toggleChapterBookmark(
   const next = [{ chapterId, chapterTitle, addedAt: Date.now() }, ...bookmarks];
   saveChapterBookmarks(storage, workId, next);
   return { bookmarks: next, added: true };
+}
+
+
+export interface BookSearchHit {
+  chapterId: string;
+  chapterTitle: string;
+  idx: number;
+  firstParaIndex: number;
+  context: string;
+  count: number;
+}
+
+interface BookSearchRepository {
+  listChapters(workId: string): Promise<{ id: string; idx: number; title: string }[]>;
+  getChapterText(chapterId: string): Promise<string>;
+}
+
+export async function searchChapters(
+  repo: BookSearchRepository,
+  workId: string,
+  rawQuery: string,
+): Promise<BookSearchHit[]> {
+  const query = rawQuery.trim().toLocaleLowerCase();
+  if (!query) return [];
+  const chapters = await repo.listChapters(workId);
+  const hits: BookSearchHit[] = [];
+  for (const chapter of chapters) {
+    const paragraphs = splitParagraphs(await repo.getChapterText(chapter.id));
+    const matches: number[] = [];
+    for (let index = 0; index < paragraphs.length; index++) {
+      if (paragraphs[index].toLocaleLowerCase().includes(query)) matches.push(index);
+    }
+    if (matches.length === 0) continue;
+    const firstParaIndex = matches[0];
+    hits.push({
+      chapterId: chapter.id,
+      chapterTitle: chapter.title,
+      idx: chapter.idx,
+      firstParaIndex,
+      context: paragraphs[firstParaIndex].slice(0, 100),
+      count: matches.length,
+    });
+  }
+  return hits;
 }
