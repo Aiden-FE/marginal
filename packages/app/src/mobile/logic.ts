@@ -96,7 +96,10 @@ export function loadReadingPosition(
 }
 
 export function scrollRatio(scrollTop: number, scrollHeight: number, clientHeight: number): number {
-  return clampRatio(scrollTop / Math.max(1, scrollHeight - clientHeight));
+  const max = scrollHeight - clientHeight;
+  // 内容不足一屏时视为整章已读（短尾声章也能拿到"读完"判定）
+  if (max <= 0) return 1;
+  return clampRatio(scrollTop / max);
 }
 
 export function scrollTopForRatio(ratio: number, scrollHeight: number, clientHeight: number): number {
@@ -105,6 +108,69 @@ export function scrollTopForRatio(ratio: number, scrollHeight: number, clientHei
 
 export function clampFontSize(value: number): number {
   return Math.max(14, Math.min(30, value));
+}
+
+export type ReaderTheme = "paper" | "eyecare" | "dark";
+
+export function normalizeReaderTheme(value: string | null): ReaderTheme {
+  return value === "eyecare" || value === "dark" ? value : "paper";
+}
+
+export function nextReaderTheme(theme: ReaderTheme): ReaderTheme {
+  return theme === "paper" ? "eyecare" : theme === "eyecare" ? "dark" : "paper";
+}
+
+export function clampAutoScrollSpeed(value: number): number {
+  if (!Number.isFinite(value)) return 60;
+  return Math.max(20, Math.min(180, Math.round(value)));
+}
+
+export interface WorkGroupMap { [workId: string]: string }
+
+export const WORK_GROUPS_KEY = "marginal.work-groups.v1";
+
+export function loadWorkGroups(storage: Pick<Storage, "getItem">): WorkGroupMap {
+  try {
+    const raw = storage.getItem(WORK_GROUPS_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => (
+      typeof entry[0] === "string" && typeof entry[1] === "string" && entry[1].trim().length > 0
+    )).map(([id, group]) => [id, group.trim().slice(0, 30)]));
+  } catch {
+    return {};
+  }
+}
+
+export function saveWorkGroups(storage: Pick<Storage, "setItem">, groups: WorkGroupMap): void {
+  storage.setItem(WORK_GROUPS_KEY, JSON.stringify(groups));
+}
+
+export function setWorkGroup(
+  storage: Pick<Storage, "getItem" | "setItem">,
+  workId: string,
+  group: string,
+): WorkGroupMap {
+  const groups = loadWorkGroups(storage);
+  const normalized = group.trim().slice(0, 30);
+  if (normalized) groups[workId] = normalized;
+  else delete groups[workId];
+  saveWorkGroups(storage, groups);
+  return groups;
+}
+
+export function workGroupNames(groups: WorkGroupMap): string[] {
+  return [...new Set(Object.values(groups).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
+export function isWorkFinished(
+  position: ReadingPosition | null,
+  chapters: { id: string }[],
+  threshold = 0.98,
+): boolean {
+  if (!position || chapters.length === 0) return false;
+  return chapters[chapters.length - 1].id === position.chapterId && position.scrollRatio >= threshold;
 }
 
 export interface QueueProgress {

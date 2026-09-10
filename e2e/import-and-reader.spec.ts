@@ -2,6 +2,41 @@ import { test, expect } from "@playwright/test";
 import { openApp, importSampleBook, waitForToast, showReaderChrome, openReaderFromLibrary } from "./utils";
 
 test.describe("移动端全流程（demo provider，IndexedDB）", () => {
+  test("导入 Loading 与移动布局：解析/入库有过渡且按钮不遮挡", async ({ page }) => {
+    await openApp(page);
+    const heroCopy = page.locator(".m-hero-card p");
+    const heroButton = page.locator(".m-hero-action");
+    const [copyBox, buttonBox] = await Promise.all([heroCopy.boundingBox(), heroButton.boundingBox()]);
+    expect(copyBox && buttonBox && copyBox.y + copyBox.height <= buttonBox.y).toBe(true);
+
+    await page.getByText("导入小说").first().click();
+    await page.route("**/sample-novel.txt", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+    await page.getByRole("button", { name: "使用示例书" }).click();
+    await expect(page.getByRole("status")).toContainText("正在加载示例书");
+    await page.waitForSelector("input[aria-label='书稿名称']", { state: "visible", timeout: 10_000 });
+
+    const aiButton = page.getByRole("button", { name: "AI 智能切分" });
+    const summary = page.locator(".m-preview-summary");
+    const [aiBox, summaryBox] = await Promise.all([aiButton.boundingBox(), summary.boundingBox()]);
+    expect(aiBox && summaryBox && aiBox.width >= summaryBox.width - 32).toBe(true);
+
+    // 延迟底层写入，稳定验证确认导入过渡遮罩
+    await page.evaluate(() => {
+      const repo = window.__store!.repo;
+      const original = repo.putWork.bind(repo);
+      repo.putWork = async (...args: Parameters<typeof repo.putWork>) => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        return original(...args);
+      };
+    });
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await expect(page.getByRole("status")).toContainText("正在写入章节与创建书籍");
+    await waitForToast(page, "已导入");
+  });
+
   test("示例书导入 → 章节并入/拆分 → 确认后章节数正确", async ({ page }) => {
     await openApp(page);
     const initialChapters = await (async () => {
@@ -41,9 +76,11 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     // 切到第 2 章
     await chapters.nth(1).click();
     await expect(page.locator(".m-reader-title")).toBeVisible();
-    // 字号 / 主题切换
+    // 字号 / 主题循环：日间 → 护眼 → 夜间
     await showReaderChrome(page);
     await page.getByRole("button", { name: "增大字号" }).click();
+    await page.getByRole("button", { name: "护眼" }).click();
+    await expect(page.locator(".m-reader.theme-eyecare")).toBeVisible();
     await page.getByRole("button", { name: "夜间" }).click();
     await expect(page.locator(".m-reader.theme-dark")).toBeVisible();
   });
@@ -267,7 +304,10 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     await expect(page.locator(".m-reader-bottom")).toBeVisible();
     await expect(page.locator(".m-reader-top")).toBeVisible();
 
-    // 夜间切换后浏览器主题色与阅读背景融合
+    // 护眼/夜间切换后浏览器主题色与阅读背景融合
+    await page.getByRole("button", { name: "护眼" }).click();
+    await expect(page.locator("meta[name='theme-color']")).toHaveAttribute("content", "#cfe3d2");
+    await expect(page.locator(".m-reader.theme-eyecare")).toBeVisible();
     await page.getByRole("button", { name: "夜间" }).click();
     await expect(page.locator("meta[name='theme-color']")).toHaveAttribute("content", "#171816");
     await expect(page.locator(".m-reader.theme-dark")).toBeVisible();
@@ -285,5 +325,89 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     await expect(page.locator(".m-reader-bottom")).toBeVisible();
     await page.waitForTimeout(4500);
     await expect(page.locator(".m-reader-bottom")).toBeVisible();
+  });
+
+  test("自动阅读：等速滚动、速度设置、章末停留后停止", async ({ page }) => {
+    await openApp(page);
+    await importSampleBook(page);
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await waitForToast(page, "已导入");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+    await expect.poll(async () => page.locator(".m-reader-scroll").evaluate((el) => el.scrollHeight)).toBeGreaterThan(500);
+
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: /开始自动阅读/ }).click();
+    const scroll = page.locator(".m-reader-scroll");
+    const before = await scroll.evaluate((el) => el.scrollTop);
+    await page.waitForTimeout(1800);
+    const after = await scroll.evaluate((el) => el.scrollTop);
+    expect(after).toBeGreaterThan(before);
+
+    // 速度设置面板可调节并停止
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: /自动阅读速度/ }).click();
+    await expect(page.getByText("像素/秒")).toBeVisible();
+    await page.getByRole("button", { name: "提高自动阅读速度" }).click();
+    await page.getByRole("button", { name: "停止自动阅读" }).click();
+    const paused = await scroll.evaluate((el) => el.scrollTop);
+    await page.waitForTimeout(1200);
+    expect(await scroll.evaluate((el) => el.scrollTop)).toBe(paused);
+  });
+
+  test("段落海报：点按段落生成分享海报", async ({ page }) => {
+    await openApp(page);
+    await importSampleBook(page);
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await waitForToast(page, "已导入");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+
+    await page.locator(".m-reader-para").first().click({ position: { x: 10, y: 10 } });
+    await page.getByRole("button", { name: "制作分享海报" }).click();
+    const dialog = page.getByRole("dialog", { name: "分享海报" });
+    await expect(dialog).toBeVisible();
+    const canvas = dialog.locator("canvas.m-poster-canvas");
+    await expect(canvas).toBeVisible();
+    expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).width)).toBeGreaterThan(0);
+    await expect(page.getByRole("button", { name: "分享或保存图片" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭" }).click();
+  });
+
+  test("书架分组筛选与已读完标记", async ({ page }) => {
+    await openApp(page);
+    await importSampleBook(page);
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await waitForToast(page, "已导入");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+
+    // 跳到最后一章并滚到底部，制造"读完"状态
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "章节目录" }).click();
+    await page.locator(".m-chapter-row > button:first-child").last().click();
+    const scroll = page.locator(".m-reader-scroll");
+    await expect(page.locator(".m-reader-loading")).toHaveCount(0);
+    await expect.poll(async () => scroll.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(100);
+    await page.waitForTimeout(500); // 等待切章恢复位置的双 rAF 完成
+    await scroll.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.waitForTimeout(900);
+
+    // 回书架：显示已读完徽章
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "返回书架" }).click();
+    await expect(page.locator(".m-book-card .m-book-done")).toHaveText("已读完", { timeout: 10_000 });
+    await expect(page.getByText("已读完").first()).toBeVisible();
+
+    // 设置分组并筛选
+    await page.getByRole("button", { name: /^管理《/ }).click();
+    await page.getByRole("button", { name: "设置分组" }).click();
+    await page.getByLabel("分组名称").fill("武侠");
+    await page.getByRole("button", { name: "保存分组" }).click();
+    await waitForToast(page, "加入「武侠」");
+    await expect(page.getByRole("button", { name: /武侠 · 1/ })).toBeVisible();
+    await page.getByRole("button", { name: /武侠 · 1/ }).click();
+    await expect(page.locator(".m-book-card")).toHaveCount(1);
+    await page.getByRole("button", { name: "全部", exact: true }).click();
+    await expect(page.locator(".m-book-card")).toHaveCount(1);
   });
 });

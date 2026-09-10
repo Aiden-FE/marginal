@@ -1,16 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { proposeStructure, type ProposedChapter } from "@marginal/core";
 import {
+  clampAutoScrollSpeed,
   clampFontSize,
   clampRatio,
   detectUiMode,
+  isWorkFinished,
+  loadWorkGroups,
   listChapterBookmarks,
   listFavorites,
   loadReadingPosition,
   mergeChapterUp,
+  nextReaderTheme,
+  normalizeReaderTheme,
   queueProgress,
   readingPositionKey,
   saveReadingPosition,
+  saveWorkGroups,
+  setWorkGroup,
+  workGroupNames,
   searchChapters,
   scrollRatio,
   scrollTopForRatio,
@@ -18,6 +26,7 @@ import {
   toggleChapterBookmark,
   toggleFavorite,
 } from "./logic";
+import { wrapPosterText } from "./poster";
 
 const memory = () => {
   const backing = new Map<string, string>();
@@ -27,6 +36,53 @@ const memory = () => {
     dump: () => backing,
   };
 };
+
+describe("阅读器扩展设置", () => {
+  it("主题按日间、护眼、夜间循环并兼容损坏值", () => {
+    expect(normalizeReaderTheme("eyecare")).toBe("eyecare");
+    expect(normalizeReaderTheme("unknown")).toBe("paper");
+    expect(nextReaderTheme("paper")).toBe("eyecare");
+    expect(nextReaderTheme("eyecare")).toBe("dark");
+    expect(nextReaderTheme("dark")).toBe("paper");
+  });
+
+  it("自动阅读速度钳制到可用范围", () => {
+    expect(clampAutoScrollSpeed(1)).toBe(20);
+    expect(clampAutoScrollSpeed(80)).toBe(80);
+    expect(clampAutoScrollSpeed(999)).toBe(180);
+    expect(clampAutoScrollSpeed(Number.NaN)).toBe(60);
+  });
+
+  it("只有最后一章接近结尾才判定读完", () => {
+    const chapters = [{ id: "c1" }, { id: "c2" }];
+    expect(isWorkFinished({ chapterId: "c2", scrollRatio: 0.99 }, chapters)).toBe(true);
+    expect(isWorkFinished({ chapterId: "c2", scrollRatio: 0.5 }, chapters)).toBe(false);
+    expect(isWorkFinished({ chapterId: "c1", scrollRatio: 1 }, chapters)).toBe(false);
+    expect(isWorkFinished(null, chapters)).toBe(false);
+  });
+
+  it("书架分组可设置、清除、过滤损坏数据并列出名称", () => {
+    const storage = memory();
+    let groups = setWorkGroup(storage, "w1", "武侠");
+    groups = setWorkGroup(storage, "w2", " 科幻 ");
+    expect(loadWorkGroups(storage)).toEqual({ w1: "武侠", w2: "科幻" });
+    expect(workGroupNames(groups)).toEqual(["科幻", "武侠"]);
+    groups = setWorkGroup(storage, "w1", "");
+    expect(groups).toEqual({ w2: "科幻" });
+    saveWorkGroups(storage, { w3: "x".repeat(40) });
+    expect(loadWorkGroups(storage).w3).toHaveLength(30);
+    storage.setItem("marginal.work-groups.v1", "bad json");
+    expect(loadWorkGroups(storage)).toEqual({});
+  });
+
+  it("海报正文可断行并限制最大行数", () => {
+    expect(wrapPosterText("短句")).toEqual(["短句"]);
+    const lines = wrapPosterText("这是一段需要制作成分享海报的很长中文正文".repeat(20), 10, 4);
+    expect(lines).toHaveLength(4);
+    expect(lines[3].endsWith("…")).toBe(true);
+    expect(wrapPosterText("一二三四五六七八九十", 5, 2)).toEqual(["一二三四五", "六七八九十"]);
+  });
+});
 
 describe("detectUiMode", () => {
   it("?ui 参数强制覆盖设备特征", () => {
@@ -108,8 +164,9 @@ describe("滚动与字号计算", () => {
     expect(scrollTopForRatio(ratio, 1000, 500)).toBeCloseTo(250);
   });
 
-  it("不可滚动时比率为 0", () => {
-    expect(scrollRatio(0, 500, 500)).toBe(0);
+  it("内容不足一屏时比率记 1，短尾声章可判定读完", () => {
+    expect(scrollRatio(0, 500, 500)).toBe(1);
+    expect(isWorkFinished({ chapterId: "only", scrollRatio: scrollRatio(0, 500, 500) }, [{ id: "only" }])).toBe(true);
   });
 
   it("字号钳制 14~30", () => {

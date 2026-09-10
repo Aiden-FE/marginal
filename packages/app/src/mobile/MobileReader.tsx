@@ -5,16 +5,19 @@ import { store, useStore } from "../store";
 import { IllustrationImage } from "../components/IllustrationImage";
 import { ActionSheet, BottomSheet, MiniQueueProgress } from "./shared";
 import {
-  clampFontSize, listChapterBookmarks, listFavorites, loadReadingPosition, saveChapterBookmarks, saveFavorites,
-  saveReadingPosition, scrollRatio, scrollTopForRatio, searchChapters, toggleChapterBookmark, toggleFavorite,
-  type BookSearchHit, type ChapterBookmark, type ParagraphFavorite,
+  clampAutoScrollSpeed, clampFontSize, listChapterBookmarks, listFavorites, loadReadingPosition,
+  nextReaderTheme, normalizeReaderTheme, saveChapterBookmarks, saveFavorites, saveReadingPosition,
+  scrollRatio, scrollTopForRatio, searchChapters, toggleChapterBookmark, toggleFavorite,
+  type BookSearchHit, type ChapterBookmark, type ParagraphFavorite, type ReaderTheme,
 } from "./logic";
+import { renderParagraphPoster, type ParagraphPosterInput } from "./poster";
 import type { MobileWorkTab } from "./types";
 
 const FONT_KEY = "marginal.reader.fontSize.v1";
 const THEME_KEY = "marginal.reader.theme.v1";
 const IMMERSIVE_KEY = "marginal.reader.immersive.v1";
-const THEME_COLOR: Record<"paper" | "dark", string> = { paper: "#f4eddc", dark: "#171816" };
+const AUTO_SPEED_KEY = "marginal.reader.autoSpeed.v1";
+const THEME_COLOR: Record<ReaderTheme, string> = { paper: "#f4eddc", eyecare: "#cfe3d2", dark: "#171816" };
 
 export function MobileReader({
   work,
@@ -35,9 +38,11 @@ export function MobileReader({
   const [showChapters, setShowChapters] = useState(false);
   const [scene, setScene] = useState<{ paraIndex: number; text: string } | null>(null);
   const [fontSize, setFontSize] = useState(() => clampFontSize(Number(localStorage.getItem(FONT_KEY)) || 19));
-  const [theme, setTheme] = useState<"paper" | "dark">(
-    () => (localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "paper"),
-  );
+  const [theme, setTheme] = useState<ReaderTheme>(() => normalizeReaderTheme(localStorage.getItem(THEME_KEY)));
+  const [autoScroll, setAutoScroll] = useState(false);
+  const [autoSpeed, setAutoSpeed] = useState(() => clampAutoScrollSpeed(Number(localStorage.getItem(AUTO_SPEED_KEY)) || 60));
+  const [showAutoSettings, setShowAutoSettings] = useState(false);
+  const [poster, setPoster] = useState<ParagraphPosterInput | null>(null);
   const [progress, setProgress] = useState(0);
   const [menu, setMenu] = useState(false);
   const [paraMenu, setParaMenu] = useState<{ paraIndex: number; text: string } | null>(null);
@@ -56,6 +61,11 @@ export function MobileReader({
   const ratioRef = useRef(0);
   const saveTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const chromeLockUntilRef = useRef(0);
+  const autoSpeedRef = useRef(autoSpeed);
+  const autoAdvancingRef = useRef(false);
+  const autoBottomSinceRef = useRef(0);
+  const posterCanvasRef = useRef<HTMLCanvasElement>(null);
   const loadSeqRef = useRef(0);
   const searchSeqRef = useRef(0);
 
@@ -77,7 +87,7 @@ export function MobileReader({
     viewport.scrollTop = scrollTopForRatio(ratio, viewport.scrollHeight, viewport.clientHeight);
   }, []);
 
-  // 沉浸模式：工具栏短暂显示后自动收起；交互会续期
+  // 沉浸模式：工具栏短暂显示后自动收起；交互会续期；用户手动唤出后短暂锁定，避免滚动立刻收起
   const armAutoHide = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
@@ -88,6 +98,11 @@ export function MobileReader({
       });
     }, 8000);
   }, []);
+
+  const userShowsChrome = useCallback(() => {
+    chromeLockUntilRef.current = performance.now() + 8000;
+    armAutoHide();
+  }, [armAutoHide]);
 
   useEffect(() => {
     if (chrome && immersive) armAutoHide();
@@ -110,6 +125,21 @@ export function MobileReader({
       if (previous) meta.setAttribute("content", previous);
     };
   }, [theme]);
+
+  useEffect(() => {
+    autoSpeedRef.current = autoSpeed;
+    localStorage.setItem(AUTO_SPEED_KEY, String(autoSpeed));
+  }, [autoSpeed]);
+
+  useEffect(() => {
+    if (!poster) return;
+    try {
+      if (posterCanvasRef.current) renderParagraphPoster(posterCanvasRef.current, poster);
+    } catch {
+      setPoster(null);
+      store.notify("当前浏览器不支持海报生成");
+    }
+  }, [poster]);
 
   const flushPosition = useCallback(() => {
     if (saveTimer.current) {
@@ -147,6 +177,63 @@ export function MobileReader({
     requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(ratio)));
     return true;
   }, [work.id, scrollTo]);
+
+  // 自动阅读：等速滚动；章末停留后自动切下一章；任何弹层打开时暂停
+  useEffect(() => {
+    if (!autoScroll) return;
+    const overlayOpen = showChapters || menu || paraMenu || showSearch || showFavorites || showBookmarks || scene || showAutoSettings || poster;
+    if (overlayOpen) return;
+    const viewport = viewportRef.current;
+    const pauseForManualScroll = () => {
+      setAutoScroll(false);
+      autoBottomSinceRef.current = 0;
+      store.notify("已暂停自动阅读");
+    };
+    viewport?.addEventListener("touchstart", pauseForManualScroll, { passive: true });
+    viewport?.addEventListener("wheel", pauseForManualScroll, { passive: true });
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const dt = Math.min(0.12, (now - last) / 1000);
+      last = now;
+      const atBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1;
+      if (atBottom) {
+        if (autoBottomSinceRef.current === 0) autoBottomSinceRef.current = now;
+        const dwelled = now - autoBottomSinceRef.current >= 1500;
+        const index = chapters.findIndex((chapter) => chapter.id === chapterIdRef.current);
+        const next = chapters[index + 1];
+        if (dwelled && !autoAdvancingRef.current) {
+          if (next) {
+            autoAdvancingRef.current = true;
+            void switchChapter(next.id, 0).finally(() => {
+              autoAdvancingRef.current = false;
+              autoBottomSinceRef.current = 0;
+            });
+          } else {
+            setAutoScroll(false);
+            autoBottomSinceRef.current = 0;
+            store.notify("已自动读完最后一章");
+            return;
+          }
+        }
+      } else {
+        autoBottomSinceRef.current = 0;
+        viewport.scrollTop += autoSpeedRef.current * dt;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      viewport?.removeEventListener("touchstart", pauseForManualScroll);
+      viewport?.removeEventListener("wheel", pauseForManualScroll);
+    };
+  }, [autoScroll, showChapters, menu, paraMenu, showSearch, showFavorites, showBookmarks, scene, showAutoSettings, poster, chapters, switchChapter]);
 
   // 首次进入：恢复上次阅读位置；章节结构重切后位置失效则回退并提示
   useEffect(() => {
@@ -249,7 +336,7 @@ export function MobileReader({
     const ratio = scrollRatio(viewport.scrollTop, viewport.scrollHeight, viewport.clientHeight);
     ratioRef.current = ratio;
     setProgress(ratio);
-    if (immersive) setChrome(false);
+    if (immersive && performance.now() >= chromeLockUntilRef.current) setChrome(false);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     const snapshot = { chapterId: chapterIdRef.current, scrollRatio: ratio };
     saveTimer.current = window.setTimeout(() => {
@@ -281,10 +368,41 @@ export function MobileReader({
   function toggleTheme() {
     armAutoHide();
     setTheme((current) => {
-      const next = current === "paper" ? "dark" : "paper";
+      const next = nextReaderTheme(current);
       localStorage.setItem(THEME_KEY, next);
       return next;
     });
+  }
+
+  function adjustAutoSpeed(delta: number) {
+    setAutoSpeed((current) => clampAutoScrollSpeed(current + delta));
+  }
+
+  async function sharePosterImage() {
+    const canvas = posterCanvasRef.current;
+    if (!canvas) return;
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (blob && typeof navigator.canShare === "function") {
+      const file = new File([blob], "paragraph-poster.png", { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: work.title });
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+        }
+      }
+    }
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `《${work.title.slice(0, 20)}》段落海报.png`;
+    link.click();
+    store.notify("海报已生成；若未自动保存，可长按预览图保存到相册");
+  }
+
+  function openPoster(text: string) {
+    const chapter = chapters.find((item) => item.id === chapterIdRef.current);
+    setPoster({ title: work.title, chapterTitle: chapter?.title ?? "", text });
   }
 
   function toggleImmersive() {
@@ -421,7 +539,10 @@ export function MobileReader({
         type="button"
         className="m-reader-tap-toggle"
         aria-label="切换阅读工具栏"
-        onClick={() => setChrome((value) => !value)}
+        onClick={() => setChrome((value) => {
+          if (!value) userShowsChrome();
+          return !value;
+        })}
       />
 
       <header className={`m-reader-top${chrome ? "" : " is-hidden"}`} aria-hidden={!chrome}>
@@ -446,7 +567,9 @@ export function MobileReader({
           <button onClick={() => stepChapter(-1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) <= 0}>上一章</button>
           <button aria-label="减小字号" onClick={() => changeFont(-2)}>A−</button>
           <button aria-label="增大字号" onClick={() => changeFont(2)}>A＋</button>
-          <button onClick={toggleTheme}>{theme === "paper" ? "🌙 夜间" : "☀️ 日间"}</button>
+          <button onClick={toggleTheme} aria-label={`切换到${nextReaderTheme(theme) === "dark" ? "夜间" : nextReaderTheme(theme) === "eyecare" ? "护眼" : "日间"}模式`}>
+            {theme === "paper" ? "🌿 护眼" : theme === "eyecare" ? "🌙 夜间" : "☀️ 日间"}
+          </button>
           <button onClick={() => stepChapter(1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) === chapters.length - 1}>下一章</button>
         </div>
         <MiniQueueProgress />
@@ -486,7 +609,8 @@ export function MobileReader({
               label: favParas.has(paraMenu.paraIndex) ? "取消收藏" : "收藏段落",
               onClick: () => toggleCurrentFavorite(paraMenu.paraIndex, paraMenu.text),
             },
-            { icon: "📤", label: "分享段落", onClick: () => void shareParagraph(paraMenu.text) },
+            { icon: "📤", label: "制作分享海报", onClick: () => openPoster(paraMenu.text) },
+            { icon: "📋", label: "复制段落文本", onClick: () => void shareParagraph(paraMenu.text) },
           ]}
         />
       )}
@@ -557,7 +681,7 @@ export function MobileReader({
                   <span>{favorite.chapterTitle || "章节"}</span>
                   <div>
                     <button onClick={() => jumpToFavorite(favorite)}>去阅读</button>
-                    <button onClick={() => void shareParagraph(favorite.text)}>分享</button>
+                    <button onClick={() => { setShowFavorites(false); openPoster(favorite.text); }}>海报</button>
                     <button onClick={() => removeFavorite(favorite)}>删除</button>
                   </div>
                 </div>
@@ -567,10 +691,37 @@ export function MobileReader({
         </BottomSheet>
       )}
 
+      {poster && (
+        <BottomSheet title="分享海报" onClose={() => setPoster(null)}>
+          <canvas ref={posterCanvasRef} className="m-poster-canvas" aria-label="段落分享海报预览" />
+          <p className="m-hint">可直接分享图片；不支持文件分享的浏览器会下载 PNG，手机端也可长按预览图保存。</p>
+          <div className="m-inline-actions">
+            <button className="m-primary" onClick={() => void sharePosterImage()}>分享或保存图片</button>
+            <button onClick={() => void copyText(`《${poster.title}》\n${poster.text}`).then((ok) => store.notify(ok ? "段落文本已复制" : "复制失败"))}>复制文字</button>
+          </div>
+        </BottomSheet>
+      )}
+
+      {showAutoSettings && (
+        <BottomSheet title="自动阅读设置" onClose={() => setShowAutoSettings(false)}>
+          <p className="m-hint">按固定速度连续滚动，章末停留后自动进入下一章。打开目录、搜索或海报时会暂停。</p>
+          <div className="m-speed-row">
+            <button aria-label="降低自动阅读速度" onClick={() => adjustAutoSpeed(-10)}>−</button>
+            <div><strong className="m-speed-value">{autoSpeed}</strong><span> 像素/秒</span></div>
+            <button aria-label="提高自动阅读速度" onClick={() => adjustAutoSpeed(10)}>＋</button>
+          </div>
+          <button className="m-primary m-wide" onClick={() => { setAutoScroll((value) => !value); setShowAutoSettings(false); }}>
+            {autoScroll ? "停止自动阅读" : "开始自动阅读"}
+          </button>
+        </BottomSheet>
+      )}
+
       {menu && (
         <BottomSheet title={work.title} onClose={() => setMenu(false)}>
           <div className="m-stack-actions">
             <button aria-pressed={immersive} onClick={() => { toggleImmersive(); setMenu(false); }}>{immersive ? "☀️ 退出沉浸阅读" : "🌙 开启沉浸阅读"}</button>
+            <button aria-pressed={autoScroll} onClick={() => { setAutoScroll((value) => !value); setMenu(false); }}>{autoScroll ? "⏸ 停止自动阅读" : "▶️ 开始自动阅读"}</button>
+            <button onClick={() => { setMenu(false); setShowAutoSettings(true); }}>⏱ 自动阅读速度 · {autoSpeed}px/秒</button>
             <button onClick={() => { setMenu(false); setShowSearch(true); }}>🔍 全书搜索</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("repair"); }}>🔧 修复与修订</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("entities"); }}>👤 实体卡</button>
