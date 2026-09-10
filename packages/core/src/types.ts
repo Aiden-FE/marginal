@@ -19,11 +19,13 @@ export interface WorkSettings {
   budgetLimit: number;
 }
 
-export type TaskKind = "repair" | "extract" | "illustration";
+export type TaskKind = "repair" | "restructure" | "extract" | "illustration";
 
 export interface TaskConfig {
   providerId: string;
   model: string;
+  /** 默认经 Agent 网关执行；旧配置缺省时按 agent 迁移。 */
+  mode?: "direct" | "agent";
 }
 
 export interface Chapter {

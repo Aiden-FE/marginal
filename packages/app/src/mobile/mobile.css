@@ -378,7 +378,7 @@
 .m-fav-mark { margin-left: 4px; color: #d9a13c; font-size: .7em; }
 .m-reader .illus { display: block; width: 100%; height: auto; max-height: 60dvh; object-fit: contain; margin: 1.25em auto 1.8em; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.16); }
 .m-reader-end { margin: 56px 0 20px; color: rgba(122,116,106,.9); text-align: center; font: 12px/1.5 system-ui, sans-serif; }
-.m-reader-top { position: absolute; z-index: 35; top: 0; left: 0; right: 0; min-height: calc(60px + env(safe-area-inset-top)); padding: calc(8px + env(safe-area-inset-top)) 10px 8px; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px 44px 44px; align-items: center; gap: 2px; color: #f7f1e7; background: rgba(28, 27, 24, .92); backdrop-filter: blur(17px); animation: m-fade .15s ease-out; }
+.m-reader-top { position: absolute; z-index: 35; top: 0; left: 0; right: 0; min-height: calc(60px + env(safe-area-inset-top)); padding: calc(8px + env(safe-area-inset-top)) 10px 8px; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px 44px 44px; align-items: center; gap: 2px; color: #f7f1e7; background: rgba(28, 27, 24, .92); backdrop-filter: blur(17px); transition: transform .25s ease, opacity .25s ease, visibility 0s linear .25s; }
 .m-reader-top .m-icon-btn { color: #f7f1e7; }
 .m-reader-top .m-reader-star.on { color: #e8b54d; }
 .m-reader-loading { margin: 8px auto 0; color: var(--m-muted, #7a746a); font: 12px/1.5 system-ui, sans-serif; text-align: center; }
@@ -386,7 +386,7 @@
 .m-reader-heading strong, .m-reader-heading span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-reader-heading strong { font-size: 14px; }
 .m-reader-heading span { margin-top: 2px; color: rgba(247,241,231,.6); font-size: 10px; }
-.m-reader-bottom { position: absolute; z-index: 35; bottom: 0; left: 0; right: 0; padding: 10px 12px calc(11px + env(safe-area-inset-bottom)); color: #f7f1e7; background: rgba(28, 27, 24, .94); backdrop-filter: blur(17px); animation: m-fade .15s ease-out; }
+.m-reader-bottom { position: absolute; z-index: 35; bottom: 0; left: 0; right: 0; padding: 10px 12px calc(11px + env(safe-area-inset-bottom)); color: #f7f1e7; background: rgba(28, 27, 24, .94); backdrop-filter: blur(17px); transition: transform .25s ease, opacity .25s ease, visibility 0s linear .25s; }
 .m-reader-progress-row { display: grid; grid-template-columns: 65px 1fr 40px; align-items: center; gap: 8px; font: 10px/1.2 system-ui; color: rgba(247,241,231,.65); }
 .m-progress-track { height: 3px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.16); }
 .m-progress-track > div { height: 100%; min-width: 0; border-radius: inherit; background: var(--m-accent); transition: width .18s linear; }
@@ -531,3 +531,8 @@
 .m-fav-meta > span { min-width: 0; color: var(--m-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-fav-meta > div { display: flex; gap: 6px; flex: 0 0 auto; }
 .mobile-app .m-fav-meta button { min-height: 34px; padding: 4px 10px; font-size: 12px; }
+
+/* 沉浸阅读：工具栏滑出收起（visibility 延迟翻转保证淡出完整） */
+.m-reader-top.is-hidden, .m-reader-bottom.is-hidden { transform: translateY(-110%); opacity: 0; visibility: hidden; pointer-events: none; }
+.m-reader-bottom.is-hidden { transform: translateY(110%); }
+.m-reader-top:not(.is-hidden), .m-reader-bottom:not(.is-hidden) { transition: transform .25s ease, opacity .25s ease, visibility 0s; }

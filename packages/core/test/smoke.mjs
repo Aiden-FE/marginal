@@ -34,6 +34,90 @@ check("切分识别全部 8 章", proposed.length === 8, `实际 ${proposed.leng
 check("标题无 undefined", proposed.every((c) => typeof c.title === "string" && c.title !== "undefined"));
 check("超大章内部切分建议为纯函数", Array.isArray(core.proposeInnerChapterSplits("x".repeat(25000))));
 
+// ---------- 切章防误切 ----------
+{
+  // 正文中独立成行的短句（曾因统计兜底被切成章）
+  const noisy = Array.from({ length: 30 }, (_, i) => `这是第${i}段正文，足够长以至于不会被当成标题，句末有标点。`).join("\n");
+  const statsTrap = [
+    "第一章 起点",
+    ...Array.from({ length: 8 }, () => "正文段落，句末标点，保持这一章有足够的内容长度。"),
+    "夜色渐深",
+    ...Array.from({ length: 8 }, () => "正文继续，句末标点，短句不能凭空制造新的章节。"),
+    "第二章 归途",
+    ...Array.from({ length: 8 }, () => "更多正文，句末标点，保持这一章有足够的内容长度。"),
+  ].join("\n");
+  const noisyProposed = core.proposeStructure(noisy);
+  check("纯正文不产生章节切点", noisyProposed.length === 1, `实际 ${noisyProposed.length}`);
+  const trapProposed = core.proposeStructure(statsTrap);
+  check("正文短句不再被切成章", trapProposed.length === 2, `实际 ${trapProposed.length}: ${trapProposed.map((c) => c.title).join("|")}`);
+
+  // 孤立短章（单张内容）应并入相邻章，序章例外
+  const tiny = [
+    "第一章", ...Array.from({ length: 12 }, () => "正常长度的正文段落，凑够行数与字符数。"),
+    "第二章", "只有一行正文。",
+    "第三章", ...Array.from({ length: 12 }, () => "正常长度的正文段落，凑够行数与字符数。"),
+  ].join("\n");
+  const tinyProposed = core.proposeStructure(tiny);
+  check("孤立短章并入相邻章", tinyProposed.length === 2, `实际 ${tinyProposed.length}`);
+  const preface = ["序章", "短短一句。", "第一章", ...Array.from({ length: 12 }, () => "正常长度的正文段落，凑够行数与字符数。")].join("\n");
+  const prefaceProposed = core.proposeStructure(preface);
+  check("序章等特殊短章保留", prefaceProposed.length === 2 && prefaceProposed[0].title === "序章", `实际 ${prefaceProposed.map((c) => c.title).join("|")}`);
+}
+
+// ---------- AI 切章（demo provider） ----------
+{
+  const demo = new core.DemoProvider();
+  const aiChapters = await core.splitChaptersWithAi(demo, "demo", sample);
+  check("demo AI 切章识别全部 8 章", aiChapters.length === 8, `实际 ${aiChapters.length}`);
+  check("AI 切章边界覆盖全文", aiChapters[0].startLine === 0 && aiChapters[aiChapters.length - 1].endLine === sample.split(/\r\n|\r|\n/).length);
+  // 行号幻觉防护：块外行号被丢弃
+  const markerText = [
+    "第一章", ...Array.from({ length: 10 }, () => "第一章正文足够长，避免被最小章节体量保护合并。"),
+    "第二章", ...Array.from({ length: 10 }, () => "第二章正文足够长，验证 AI 边界校验。"),
+  ].join("\n");
+  const markers = core.assembleAiMarkers(markerText, [
+    { line: 99, title: "幻觉章" },
+    { line: 0, title: "第一章" },
+    { line: 11, title: "第二章" },
+  ]);
+  check("AI 行号幻觉被过滤", markers.length === 2 && markers.every((c) => c.title !== "幻觉章"), JSON.stringify(markers.map((c) => c.title)));
+}
+
+// ---------- Agent 网关 ----------
+{
+  const seen = [];
+  const transport = {
+    async chat(messages) {
+      seen.push(messages);
+      return JSON.stringify({ ok: true, system: messages[0]?.content ?? "" });
+    },
+    async chatJson(messages, model, opts) {
+      const text = await this.chat(messages, model, opts);
+      return JSON.parse(text);
+    },
+  };
+  const skill = { id: "restructure", description: "切章", systemPrompt: "切章技能说明" };
+  const tool = {
+    name: "lookup_character",
+    description: "查询实体卡",
+    inputSchema: { type: "object" },
+    async execute(input) { return { echo: input }; },
+  };
+  const direct = core.createDirectAgentGateway(transport, { skills: [skill] });
+  const agent = core.createToolAgentGateway(transport, { skills: [skill], tools: [tool] });
+  const result = await agent.chatJson([{ role: "system", content: "原始 system" }, { role: "user", content: "hi" }], "m1");
+  check("网关注入 skill 前缀", result.system.includes("【Skill: restructure】") && result.system.includes("原始 system"), result.system.slice(0, 60));
+  check("direct/agent 网关类型可区分", direct.kind === "direct" && agent.kind === "agent");
+  check("网关暴露 skills/tools 注册表", agent.skills.length === 1 && agent.tools.length === 1);
+  const toolResult = await agent.invokeTool("lookup_character", { name: "主角" });
+  check("Agent 工具可执行", toolResult?.echo?.name === "主角");
+  let toolMissing = false;
+  try { await agent.invokeTool("nope", {}); } catch { toolMissing = true; }
+  check("未注册工具报错", toolMissing);
+  await direct.chat([{ role: "user", content: "x" }], "m1");
+  check("chat 与 chatJson 走同一 skill 注入", seen.length === 2 && seen[1][0]?.content.includes("【Skill: restructure】"));
+}
+
 // ---------- 清洗建议应用/回滚 ----------
 const text = "第一段没有问题。\n\n第二段有乱码вД和错字他门。\n\n第三段正常。";
 const patches = [

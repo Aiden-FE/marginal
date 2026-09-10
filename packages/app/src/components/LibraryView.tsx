@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { decodeText, store, useStore } from "../store";
-import { BUNDLE_EXT, proposeStructure, readBundle, reidForCopy, type ProposedChapter } from "@marginal/core";
+import { BUNDLE_EXT, proposeStructure, readBundle, reidForCopy, splitChaptersWithAi, type ProposedChapter } from "@marginal/core";
 import { confirmImport as confirmImportAction, exportBundle as exportBundleAction } from "../actions";
 import { mergeChapterUp, splitChapterAt } from "../mobile/logic";
 
@@ -108,6 +108,23 @@ function SplitPreview({ importing, onCancel, onConfirm }: {
 }) {
   const [chapters, setChapters] = useState(importing.chapters);
   const [title, setTitle] = useState(importing.filename.replace(/\.txt$/i, ""));
+  const [aiBusy, setAiBusy] = useState(false);
+
+  async function aiSplit() {
+    if (aiBusy) return;
+    setAiBusy(true);
+    try {
+      const config = store.defaultTaskConfig("restructure");
+      const { agent } = store.getAgent("restructure");
+      const next = await splitChaptersWithAi(agent, config.model, importing.text);
+      setChapters(next);
+      store.notify(`AI 切分完成：${next.length} 章，请确认后导入`);
+    } catch (err) {
+      store.notify(`AI 切分失败：${err instanceof Error ? err.message : err}，已保留本地提案`);
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   function mergeUp(i: number) {
     setChapters(mergeChapterUp(chapters, i));
@@ -147,6 +164,7 @@ function SplitPreview({ importing, onCancel, onConfirm }: {
         </div>
         <div className="row" style={{ marginTop: 14 }}>
           <button className="primary" onClick={() => onConfirm(title, chapters)}>确认导入</button>
+          <button disabled={aiBusy} onClick={() => void aiSplit()}>{aiBusy ? "AI 切分中…" : "✨ AI 智能切分"}</button>
           <button onClick={onCancel}>取消</button>
         </div>
       </div>

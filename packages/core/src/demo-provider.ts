@@ -1,7 +1,7 @@
-// 演示供应商：无需 API key 的内置 Mock，覆盖修复/提取/插图三类任务，
+// 演示供应商：无需 API key 的内置 Mock，覆盖修复/提取/插图/切章四类任务，
 // 让整条流水线在没有供应商密钥时也能端到端跑通（测试与演示用途）。
 
-import type { ChatMessage, ImageResult } from "./types.js";
+import type { ChatMessage, ImageRequest, ImageResult } from "./types.js";
 import { parseJsonLoose, type ChatOptions } from "./provider.js";
 
 export class DemoProvider {
@@ -22,6 +22,7 @@ export class DemoProvider {
     const user = messages.find((m) => m.role === "user")?.content ?? "";
     if (system.includes("文本清洗")) return this.clean(user);
     if (system.includes("设定提取")) return this.extract(user);
+    if (system.includes("章节结构助手")) return this.splitChapters(user);
     if (system.includes("章节边界")) return JSON.stringify({ titleLines: [] });
     return "{}";
   }
@@ -72,6 +73,22 @@ export class DemoProvider {
     return JSON.stringify({ suggestions: suggestions.slice(0, 30) });
   }
 
+  private splitChapters(user: string): string {
+    const chapters: { line: number; title: string }[] = [];
+    for (const row of user.split("\n")) {
+      const match = row.match(/^\s*(\d+)\s*:\s*(.*?)\s*$/);
+      if (!match) continue;
+      const line = Number(match[1]);
+      const content = match[2].trim();
+      const title = content.match(/^(第\s*[0-9一二三四五六七八九十百千两零〇]+\s*[章回节卷集部篇])\s*[:：、\s]*(.*)$/i)
+        ?? content.match(/^(Chapter\s+(?:\d+|[IVXLC]+))\s*(?:[.:：\-\s]\s*(.*))?$/i)
+        ?? content.match(/^(\d{1,4})\s*[、.．:：]\s*(\S.{0,30})$/);
+      if (!title) continue;
+      chapters.push({ line, title: title[0].trim().slice(0, 60) });
+    }
+    return JSON.stringify({ chapters });
+  }
+
   private extract(user: string): string {
     const names = [...new Set((user.match(/[「『]?([林萧叶陈王苏李]...\b|[A-Za-z]{3,})/g) ?? []).slice(0, 4))];
     const cards = [
@@ -83,11 +100,11 @@ export class DemoProvider {
     return JSON.stringify({ cards });
   }
 
-  async generateImage(_req: { prompt: string }): Promise<ImageResult> {
-    void _req;
+  async generateImage(request: ImageRequest): Promise<ImageResult> {
+    void request;
     // 合成的占位"插图"：把 prompt 摘要画进 SVG
     const seed = Math.random().toString(36).slice(2, 7);
-    const label = (_req.prompt.match(/场景：[^\n]{0,24}/) ?? ["场景：小说插图"])[0];
+    const label = (request.prompt.match(/场景：[^\n]{0,24}/) ?? ["场景：小说插图"])[0];
     const hue = Math.floor(Math.random() * 360);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">
       <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">

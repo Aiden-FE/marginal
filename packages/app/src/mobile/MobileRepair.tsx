@@ -21,10 +21,10 @@ export function MobileRepair({ work }: { work: Work }) {
   }, [work.id, version]);
   useEffect(() => { void load(); }, [load]);
 
-  async function runStructure() {
-    setBusy("重新切分中…");
+  async function runStructure(mode: "heuristic" | "ai") {
+    setBusy(mode === "ai" ? "AI 重新切分中…" : "重新切分中…");
     try {
-      await restructure(work);
+      await restructure(work, mode);
       setSuggestions(null);
       await load();
     } catch (error) {
@@ -158,9 +158,14 @@ export function MobileRepair({ work }: { work: Work }) {
       <div className="m-card">
         <div className="m-card-head"><h3>结构修复</h3><span className="m-chip">可重跑</span></div>
         <p className="m-hint">按启发式重新切分全部章节并记录结构修订；低置信边界在真实供应商下由 LLM 复核。</p>
-        <button className="m-wide" disabled={!!busy} onClick={() => void runStructure()}>
-          {busy === "重新切分中…" ? "重切中…" : "🔄 重新切分章节"}
-        </button>
+    <div className="m-inline-actions">
+      <button className="m-wide" disabled={!!busy} onClick={() => void runStructure("heuristic")}>
+        {busy === "重新切分中…" ? "重切中…" : "🔄 本地重新切分"}
+      </button>
+      <button className="m-wide m-secondary" disabled={!!busy} onClick={() => void runStructure("ai")}>
+        {busy === "AI 重新切分中…" ? "AI 切分中…" : "✨ AI 智能切分"}
+      </button>
+    </div>
       </div>
 
       <div className="m-card">

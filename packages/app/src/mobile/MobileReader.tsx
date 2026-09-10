@@ -13,6 +13,8 @@ import type { MobileWorkTab } from "./types";
 
 const FONT_KEY = "marginal.reader.fontSize.v1";
 const THEME_KEY = "marginal.reader.theme.v1";
+const IMMERSIVE_KEY = "marginal.reader.immersive.v1";
+const THEME_COLOR: Record<"paper" | "dark", string> = { paper: "#f4eddc", dark: "#171816" };
 
 export function MobileReader({
   work,
@@ -28,7 +30,8 @@ export function MobileReader({
   const [chapterId, setChapterId] = useState("");
   const [text, setText] = useState("");
   const [anchors, setAnchors] = useState<Anchor[]>([]);
-  const [chrome, setChrome] = useState(true);
+  const [immersive, setImmersive] = useState(() => localStorage.getItem(IMMERSIVE_KEY) !== "off");
+  const [chrome, setChrome] = useState(() => localStorage.getItem(IMMERSIVE_KEY) !== "off" ? false : true);
   const [showChapters, setShowChapters] = useState(false);
   const [scene, setScene] = useState<{ paraIndex: number; text: string } | null>(null);
   const [fontSize, setFontSize] = useState(() => clampFontSize(Number(localStorage.getItem(FONT_KEY)) || 19));
@@ -52,6 +55,7 @@ export function MobileReader({
   const restoredRef = useRef(false);
   const ratioRef = useRef(0);
   const saveTimer = useRef<number | null>(null);
+  const hideTimer = useRef<number | null>(null);
   const loadSeqRef = useRef(0);
   const searchSeqRef = useRef(0);
 
@@ -72,6 +76,40 @@ export function MobileReader({
     if (!viewport) return;
     viewport.scrollTop = scrollTopForRatio(ratio, viewport.scrollHeight, viewport.clientHeight);
   }, []);
+
+  // 沉浸模式：工具栏短暂显示后自动收起；交互会续期
+  const armAutoHide = useCallback(() => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => {
+      hideTimer.current = null;
+      setImmersive((currentImmersive) => {
+        if (currentImmersive) setChrome(false);
+        return currentImmersive;
+      });
+    }, 8000);
+  }, []);
+
+  useEffect(() => {
+    if (chrome && immersive) armAutoHide();
+    else if (hideTimer.current) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+    return () => {
+      if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    };
+  }, [chrome, immersive, armAutoHide]);
+
+  // 阅读背景与浏览器状态栏/地址栏颜色融合（viewport-fit=cover）
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const previous = meta.getAttribute("content");
+    meta.setAttribute("content", THEME_COLOR[theme]);
+    return () => {
+      if (previous) meta.setAttribute("content", previous);
+    };
+  }, [theme]);
 
   const flushPosition = useCallback(() => {
     if (saveTimer.current) {
@@ -211,6 +249,7 @@ export function MobileReader({
     const ratio = scrollRatio(viewport.scrollTop, viewport.scrollHeight, viewport.clientHeight);
     ratioRef.current = ratio;
     setProgress(ratio);
+    if (immersive) setChrome(false);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     const snapshot = { chapterId: chapterIdRef.current, scrollRatio: ratio };
     saveTimer.current = window.setTimeout(() => {
@@ -231,6 +270,7 @@ export function MobileReader({
   }
 
   function changeFont(delta: number) {
+    armAutoHide();
     setFontSize((current) => {
       const next = clampFontSize(current + delta);
       localStorage.setItem(FONT_KEY, String(next));
@@ -239,9 +279,19 @@ export function MobileReader({
   }
 
   function toggleTheme() {
+    armAutoHide();
     setTheme((current) => {
       const next = current === "paper" ? "dark" : "paper";
       localStorage.setItem(THEME_KEY, next);
+      return next;
+    });
+  }
+
+  function toggleImmersive() {
+    setImmersive((current) => {
+      const next = !current;
+      localStorage.setItem(IMMERSIVE_KEY, next ? "on" : "off");
+      setChrome(next ? false : true);
       return next;
     });
   }
@@ -374,37 +424,33 @@ export function MobileReader({
         onClick={() => setChrome((value) => !value)}
       />
 
-      {chrome && (
-        <>
-          <header className="m-reader-top">
-            <button className="m-icon-btn" aria-label="返回书架" onClick={onBack}>‹</button>
-            <div className="m-reader-heading"><strong>{work.title}</strong><span>{chapterTitle}</span></div>
-            <button
-              className={`m-icon-btn m-reader-star${currentBookmarked ? " on" : ""}`}
-              aria-label={currentBookmarked ? `取消书签：${chapterTitle}` : `书签本章：${chapterTitle}`}
-              aria-pressed={currentBookmarked}
-              onClick={() => toggleChapterMark({ id: chapterId, title: chapterTitle })}
-            >★</button>
-            <button className="m-icon-btn" aria-label="章节目录" onClick={() => setShowChapters(true)}>☰</button>
-            <button className="m-icon-btn" aria-label="更多操作" onClick={() => setMenu(true)}>⋯</button>
-          </header>
-          <footer className="m-reader-bottom">
-            <div className="m-reader-progress-row">
-              <span>本章 {Math.round(progress * 100)}%</span>
-              <div className="m-progress-track"><div style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-              <span>{chapters.findIndex((chapter) => chapter.id === chapterId) + 1}/{chapters.length}</span>
-            </div>
-            <div className="m-reader-actions">
-              <button onClick={() => stepChapter(-1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) <= 0}>上一章</button>
-              <button aria-label="减小字号" onClick={() => changeFont(-2)}>A−</button>
-              <button aria-label="增大字号" onClick={() => changeFont(2)}>A＋</button>
-              <button onClick={toggleTheme}>{theme === "paper" ? "🌙 夜间" : "☀️ 日间"}</button>
-              <button onClick={() => stepChapter(1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) === chapters.length - 1}>下一章</button>
-            </div>
-            <MiniQueueProgress />
-          </footer>
-        </>
-      )}
+      <header className={`m-reader-top${chrome ? "" : " is-hidden"}`} aria-hidden={!chrome}>
+        <button className="m-icon-btn" aria-label="返回书架" onClick={onBack}>‹</button>
+        <div className="m-reader-heading"><strong>{work.title}</strong><span>{chapterTitle}</span></div>
+        <button
+          className={`m-icon-btn m-reader-star${currentBookmarked ? " on" : ""}`}
+          aria-label={currentBookmarked ? `取消书签：${chapterTitle}` : `书签本章：${chapterTitle}`}
+          aria-pressed={currentBookmarked}
+          onClick={() => toggleChapterMark({ id: chapterId, title: chapterTitle })}
+        >★</button>
+        <button className="m-icon-btn" aria-label="章节目录" onClick={() => { armAutoHide(); setShowChapters(true); }}>☰</button>
+        <button className="m-icon-btn" aria-label="更多操作" onClick={() => { armAutoHide(); setMenu(true); }}>⋯</button>
+      </header>
+      <footer className={`m-reader-bottom${chrome ? "" : " is-hidden"}`} aria-hidden={!chrome}>
+        <div className="m-reader-progress-row">
+          <span>本章 {Math.round(progress * 100)}%</span>
+          <div className="m-progress-track"><div style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+          <span>{chapters.findIndex((chapter) => chapter.id === chapterId) + 1}/{chapters.length}</span>
+        </div>
+        <div className="m-reader-actions">
+          <button onClick={() => stepChapter(-1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) <= 0}>上一章</button>
+          <button aria-label="减小字号" onClick={() => changeFont(-2)}>A−</button>
+          <button aria-label="增大字号" onClick={() => changeFont(2)}>A＋</button>
+          <button onClick={toggleTheme}>{theme === "paper" ? "🌙 夜间" : "☀️ 日间"}</button>
+          <button onClick={() => stepChapter(1)} disabled={loadingChapterId !== "" || chapters.findIndex((chapter) => chapter.id === chapterId) === chapters.length - 1}>下一章</button>
+        </div>
+        <MiniQueueProgress />
+      </footer>
 
       {showChapters && (
         <BottomSheet title="章节目录" onClose={() => setShowChapters(false)}>
@@ -524,6 +570,7 @@ export function MobileReader({
       {menu && (
         <BottomSheet title={work.title} onClose={() => setMenu(false)}>
           <div className="m-stack-actions">
+            <button aria-pressed={immersive} onClick={() => { toggleImmersive(); setMenu(false); }}>{immersive ? "☀️ 退出沉浸阅读" : "🌙 开启沉浸阅读"}</button>
             <button onClick={() => { setMenu(false); setShowSearch(true); }}>🔍 全书搜索</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("repair"); }}>🔧 修复与修订</button>
             <button onClick={() => { setMenu(false); onOpenWorkTab("entities"); }}>👤 实体卡</button>

@@ -4,6 +4,8 @@ import { useSyncExternalStore } from "react";
 import {
   DemoProvider,
   ProviderClient,
+  createDirectAgentGateway,
+  createToolAgentGateway,
   TaskQueue,
   uuidv7,
   sha256Hex,
@@ -11,6 +13,9 @@ import {
   type Repository,
   type Work,
   type WorkSettings,
+  type AgentGateway,
+  type AgentSkill,
+  type TaskKind,
 } from "@marginal/core";
 import { openRepository, engineInfo } from "@marginal/data";
 
@@ -24,6 +29,30 @@ export interface ProviderEntry extends ProviderConfig {
 }
 
 const PROVIDERS_KEY = "marginal.providers.v1";
+
+/** 内置 Agent skills：每类任务的执行说明；后续可叠加工具与远端 Pi/MCP 适配器。 */
+export const AGENT_SKILLS: Record<TaskKind, AgentSkill[]> = {
+  repair: [{ id: "clean-suggestions", description: "文本清洗建议（乱码/广告/错字）", systemPrompt: "输出结构化清洗建议 JSON，不改写情节与语气。" }],
+  restructure: [{ id: "chapter-boundaries", description: "章节边界识别", systemPrompt: "识别真正的章节标题行，拒绝正文短句、列表编号与日期。" }],
+  extract: [{ id: "entity-cards", description: "实体卡提取", systemPrompt: "从正文中提取人物/场景/物品实体卡，输出 JSON。" }],
+  illustration: [{ id: "illustration-prompt", description: "插图提示词组装", systemPrompt: "结合正典实体设定组装插图提示词。" }],
+};
+
+function readTaskConfig(kind: TaskKind): { providerId: string; model: string; mode: "direct" | "agent" } {
+  const demo = { providerId: "demo", model: "demo", mode: "agent" as const };
+  try {
+    const raw = localStorage.getItem(`marginal.task.${kind}`);
+    if (!raw) return demo;
+    const parsed = JSON.parse(raw) as { providerId?: string; model?: string; mode?: string };
+    return {
+      providerId: typeof parsed.providerId === "string" && parsed.providerId ? parsed.providerId : demo.providerId,
+      model: typeof parsed.model === "string" && parsed.model ? parsed.model : demo.model,
+      mode: parsed.mode === "direct" ? "direct" : "agent", // 旧配置缺省迁移为 agent
+    };
+  } catch {
+    return demo;
+  }
+}
 
 function defaultSettings(): WorkSettings {
   return { taskConfigs: {}, autoNormalize: false, budgetLimit: 0 };
@@ -99,11 +128,25 @@ class Store {
     return new ProviderClient(entry);
   }
 
-  defaultTaskConfig(kind: Work["settings"]["taskConfigs"] extends infer _T ? string : never): { providerId: string; model: string } {
-    const demo = { providerId: "demo", model: "demo" };
-    if (kind === "illustration") return (localStorage.getItem("marginal.task.illustration") && JSON.parse(localStorage.getItem("marginal.task.illustration")!)) || demo;
-    if (kind === "extract") return (localStorage.getItem("marginal.task.extract") && JSON.parse(localStorage.getItem("marginal.task.extract")!)) || demo;
-    return (localStorage.getItem("marginal.task.repair") && JSON.parse(localStorage.getItem("marginal.task.repair")!)) || demo;
+  /** 任务级 Agent 工厂：所有 AI 调用的唯一入口（供应商 transport + skill/tool 网关）。 */
+  getAgent(kind: TaskKind, work?: Work): { agent: AgentGateway; model: string; providerId: string } {
+    const config = work?.settings.taskConfigs[kind]
+      ? {
+        providerId: work.settings.taskConfigs[kind]!.providerId,
+        model: work.settings.taskConfigs[kind]!.model,
+        mode: work.settings.taskConfigs[kind]!.mode === "direct" ? "direct" : "agent",
+      }
+      : readTaskConfig(kind);
+    const transport = this.getClient(config.providerId);
+    const options = { skills: AGENT_SKILLS[kind] };
+    const agent = config.mode === "direct"
+      ? createDirectAgentGateway(transport, options)
+      : createToolAgentGateway(transport, options);
+    return { agent, model: config.model, providerId: config.providerId };
+  }
+
+  defaultTaskConfig(kind: TaskKind): { providerId: string; model: string; mode: "direct" | "agent" } {
+    return readTaskConfig(kind);
   }
 
   navigate(view: View): void {

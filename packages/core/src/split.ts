@@ -38,6 +38,10 @@ export function splitByHeuristics(text: string): SplitResult {
     for (const { re, base } of TITLE_PATTERNS) {
       const m = line.match(re);
       if (m) {
+        // 弱序号模式必须像真正的独立标题：前面为空行/文件开头，避免正文列表或日期被切成章。
+        const weakNumbered = base < 0.8;
+        const previousBlank = i === 0 || !lines[i - 1].trim();
+        if (weakNumbered && !previousBlank) continue;
         const title = m.slice(1).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
         // 置信度修正：行越长越不像标题；后面紧跟正文加分
         let conf = base;
@@ -48,12 +52,14 @@ export function splitByHeuristics(text: string): SplitResult {
         break;
       }
     }
+    // 统计候选只接受空行分隔的短标题；正文中的短句不能单独制造章节边界。
+    const previousBlank = i === 0 || !lines[i - 1].trim();
     if (!matched) {
       const short = line.trim().length <= Math.max(20, avg * 0.35);
       const noPunct = !/[。！？…」"’】,.!?]$/.test(line.trim());
       const nextIsLong = (lines[i + 1] ?? "").length > avg * 0.8;
-      if (short && noPunct && nextIsLong && line.trim().length >= 2) {
-        matched = { line: i, title: line.trim().slice(0, 60), confidence: 0.3, source: "stats" };
+      if (previousBlank && short && noPunct && nextIsLong && line.trim().length >= 4) {
+        matched = { line: i, title: line.trim().slice(0, 60), confidence: 0.2, source: "stats" };
       }
     }
     if (matched) points.push(matched);
@@ -86,7 +92,39 @@ export function assembleChapters(text: string, result: SplitResult): ProposedCha
     const end = i + 1 < kept.length ? kept[i + 1].line : total;
     chapters.push({ title: p.title, startLine: start, endLine: end, lowConfidence: p.confidence < 0.6 });
   }
-  return chapters;
+  return mergeTinyChapters(text, chapters);
+}
+
+/** 防止孤立短行/单页被误当成独立章节；合并只改变提案，不改变原文。 */
+export function mergeTinyChapters(text: string, chapters: ProposedChapter[], minLines = 6, minChars = 180): ProposedChapter[] {
+  if (chapters.length < 2) return chapters;
+  const out = chapters.map((chapter) => ({ ...chapter }));
+  const size = (chapter: ProposedChapter) => {
+    const body = sliceChapterText(text, chapter.startLine, chapter.endLine);
+    return { lines: chapter.endLine - chapter.startLine, chars: body.trim().length };
+  };
+  let index = 0;
+  while (index < out.length && out.length > 1) {
+    const chapter = out[index];
+    const measured = size(chapter);
+    const special = /^(序章|序言|楔子|引子|尾声|终章|番外)/.test(chapter.title.trim());
+    if (special || (measured.lines >= minLines && measured.chars >= minChars)) {
+      index++;
+      continue;
+    }
+    if (index > 0) {
+      out[index - 1].endLine = chapter.endLine;
+      out[index - 1].lowConfidence ||= chapter.lowConfidence;
+      out.splice(index, 1);
+      index = Math.max(0, index - 1);
+    } else {
+      const next = out[1];
+      chapter.endLine = next.endLine;
+      chapter.lowConfidence ||= next.lowConfidence;
+      out.splice(1, 1);
+    }
+  }
+  return out;
 }
 
 export function sliceChapterText(text: string, startLine: number, endLine: number): string {

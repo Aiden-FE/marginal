@@ -1,5 +1,6 @@
 import {
   BUNDLE_EXT,
+  splitChaptersWithAi,
   buildBundle,
   buildIllustrationPrompt,
   extractEntityCards,
@@ -50,22 +51,25 @@ export async function confirmImport(
   return work;
 }
 
-function taskClient(work: Work, kind: "repair" | "extract" | "illustration") {
-  const config = work.settings.taskConfigs[kind] ?? store.defaultTaskConfig(kind);
-  return { client: store.getClient(config.providerId), model: config.model, providerId: config.providerId };
+function taskAgent(work: Work, kind: "repair" | "restructure" | "extract" | "illustration") {
+  return store.getAgent(kind, work);
 }
 
-export async function restructure(work: Work): Promise<number> {
+export async function restructure(work: Work, mode: "heuristic" | "ai" = "heuristic"): Promise<number> {
   const chapters = await store.repo.listChapters(work.id);
   const fullText = (await Promise.all(chapters.map((chapter) => store.repo.getChapterText(chapter.id)))).join("\n\n");
   let proposed = proposeStructure(fullText);
-  const { client, model, providerId } = taskClient(work, "repair");
+  const { agent, model, providerId } = taskAgent(work, mode === "ai" ? "restructure" : "repair");
   const runId = uuidv7();
   const startedAt = Date.now();
   const running = { id: runId, workId: work.id, kind: "structure" as const, providerId, model, startedAt, finishedAt: null, status: "running" as const };
   await store.repo.putRun(running);
   try {
-    if (client.constructor?.name !== "DemoProvider") proposed = await refineLowConfidence(client, model, fullText, proposed);
+    if (mode === "ai") {
+      proposed = await splitChaptersWithAi(agent, model, fullText);
+    } else if (agent.kind === "direct" || agent.skills.length > 0) {
+      proposed = await refineLowConfidence(agent, model, fullText, proposed);
+    }
     const before = chapters.map((chapter) => ({ idx: chapter.idx, title: chapter.title }));
     const texts = proposed.map((chapter) => sliceChapterText(fullText, chapter.startLine, chapter.endLine));
     const replacements = await Promise.all(proposed.map(async (chapter, index) => ({
@@ -90,13 +94,13 @@ export async function restructure(work: Work): Promise<number> {
 
 export async function genCleanSuggestions(work: Work, chapterId: string): Promise<ContentPatch[]> {
   const text = await store.repo.getChapterText(chapterId);
-  const { client, model, providerId } = taskClient(work, "repair");
+  const { agent, model, providerId } = taskAgent(work, "repair");
   const runId = uuidv7();
   const startedAt = Date.now();
   const running = { id: runId, workId: work.id, kind: "content" as const, providerId, model, startedAt, finishedAt: null, status: "running" as const };
   await store.repo.putRun(running);
   try {
-    const patches = await proposeCleanSuggestions(client, model, text);
+    const patches = await proposeCleanSuggestions(agent, model, text);
     await store.repo.putRevision(makeContentRevision(work, chapterId, runId, patches));
     await store.repo.putRun({ ...running, finishedAt: Date.now(), status: "done" });
     store.notify(patches.length ? `AI 给出 ${patches.length} 条建议，请审核` : "未发现可清洗项");
@@ -131,11 +135,11 @@ export async function rollback(work: Work, revision: Revision): Promise<void> {
 }
 
 export async function extractEntities(work: Work): Promise<EntityCard[]> {
-  const { client, model } = taskClient(work, "extract");
+  const { agent, model } = taskAgent(work, "extract");
   const chapters = await store.repo.listChapters(work.id);
   const texts: Record<string, string> = {};
   for (const chapter of chapters) texts[chapter.id] = await store.repo.getChapterText(chapter.id);
-  const found = await extractEntityCards(client, model, work, texts);
+  const found = await extractEntityCards(agent, model, work, texts);
   const existing = await store.repo.listEntityCards(work.id);
   for (const card of found) {
     if (!existing.some((item) => item.name === card.name && item.kind === card.kind)) await store.repo.putEntityCard(card);
@@ -172,10 +176,10 @@ export async function uploadPortrait(work: Work, card: EntityCard, file: File): 
 }
 
 export function genPortrait(work: Work, card: EntityCard): void {
-  const { client, model } = taskClient(work, "illustration");
+  const { agent, model } = taskAgent(work, "illustration");
   const prompt = buildIllustrationPrompt(`「${card.name}」的单人标准像，纯色背景，上半身，设定集风格`, [card], false);
   store.queue.add(`定妆照：${card.name}`, async () => {
-    const result = await client.generateImage({ prompt, references: [], model });
+    const result = await agent.generateImage!({ prompt, references: [], model });
     const blobId = await storeGeneratedImage(work.id, result.mime, result.dataBase64);
     await store.repo.putEntityCard({ ...card, portraitBlobId: blobId });
     store.notify(`「${card.name}」定妆照已生成`);
@@ -184,7 +188,7 @@ export function genPortrait(work: Work, card: EntityCard): void {
 }
 
 async function illustrationContext(work: Work) {
-  const { client, model, providerId } = taskClient(work, "illustration");
+  const { agent, model, providerId } = taskAgent(work, "illustration");
   const cards = (await store.repo.listEntityCards(work.id)).filter((card) => card.status === "canon").slice(0, 3);
   const blobs = await store.repo.listBlobs(work.id);
   const references: { blobId: string; mime: string; dataBase64: string }[] = [];
@@ -198,14 +202,14 @@ async function illustrationContext(work: Work) {
     for (let index = 0; index < data.length; index += 0x8000) binary += String.fromCharCode(...data.subarray(index, index + 0x8000));
     references.push({ blobId: blob.id, mime: blob.mime, dataBase64: btoa(binary) });
   }
-  return { client, model, providerId, cards, references };
+  return { agent, model, providerId, cards, references };
 }
 
 export async function generateIllustration(work: Work, chapterId: string, paraIndex: number, sceneDescription: string): Promise<void> {
   const context = await illustrationContext(work);
   const prompt = buildIllustrationPrompt(sceneDescription, context.cards, context.references.length > 0);
   store.queue.add(`插图：${sceneDescription.slice(0, 18)}`, async () => {
-    const result = await context.client.generateImage({ prompt, references: context.references.map(({ mime, dataBase64 }) => ({ mime, dataBase64 })), model: context.model });
+    const result = await context.agent.generateImage!({ prompt, references: context.references.map(({ mime, dataBase64 }) => ({ mime, dataBase64 })), model: context.model });
     const blobId = await storeGeneratedImage(work.id, result.mime, result.dataBase64);
     const illustration: Illustration = {
       id: uuidv7(), workId: work.id, prompt, providerId: context.providerId, model: context.model,
@@ -237,7 +241,7 @@ export async function enqueueIllustrations(work: Work, candidates: IllustrationC
     const prompt = buildIllustrationPrompt(scene.slice(0, 200), context.cards, context.references.length > 0);
     enqueued++;
     store.queue.add(`插图：${chapter.title}·段${candidate.paraIndex + 1}`, async () => {
-      const result = await context.client.generateImage({ prompt, references: context.references.map(({ mime, dataBase64 }) => ({ mime, dataBase64 })), model: context.model });
+      const result = await context.agent.generateImage!({ prompt, references: context.references.map(({ mime, dataBase64 }) => ({ mime, dataBase64 })), model: context.model });
       const blobId = await storeGeneratedImage(work.id, result.mime, result.dataBase64);
       await store.repo.putIllustration({
         id: uuidv7(), workId: work.id, prompt, providerId: context.providerId, model: context.model,

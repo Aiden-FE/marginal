@@ -3,7 +3,8 @@ import { uuidv7 } from "@marginal/core";
 import { diagnose as diagnoseAction, saveProvider, deleteProvider } from "../actions";
 import { store, useStore, type ProviderEntry } from "../store";
 
-const TASKS: { key: "repair" | "extract" | "illustration"; label: string; hint: string }[] = [
+const TASKS: { key: "repair" | "restructure" | "extract" | "illustration"; label: string; hint: string }[] = [
+  { key: "restructure", label: "章节切分", hint: "AI 识别章节边界（导入预览可调用）" },
   { key: "repair", label: "修复", hint: "便宜模型够用（清洗/边界复核）" },
   { key: "extract", label: "实体提取", hint: "便宜模型够用（JSON 输出）" },
   { key: "illustration", label: "插图生成", hint: "需支持参考图输入" },
@@ -13,13 +14,13 @@ function taskKey(kind: string) { return `marginal.task.${kind}`; }
 
 export function MobileSettings() {
   useStore();
-  const [taskConfigs, setTaskConfigs] = useState<Record<string, { providerId: string; model: string }>>(() => (
-    Object.fromEntries(TASKS.map((task) => [task.key, JSON.parse(localStorage.getItem(taskKey(task.key)) || '{"providerId":"demo","model":"demo"}')]))
+  const [taskConfigs, setTaskConfigs] = useState<Record<string, { providerId: string; model: string; mode?: "direct" | "agent" }>>(() => (
+    Object.fromEntries(TASKS.map((task) => [task.key, JSON.parse(localStorage.getItem(taskKey(task.key)) || '{"providerId":"demo","model":"demo","mode":"agent"}')]))
   ));
   const [tick, setTick] = useState(0);
   const refresh = () => setTick((value) => value + 1);
 
-  const updateConfig = (kind: string, patch: Partial<{ providerId: string; model: string }>) => {
+  const updateConfig = (kind: string, patch: Partial<{ providerId: string; model: string; mode: "direct" | "agent" }>) => {
     const next = { ...taskConfigs, [kind]: { ...taskConfigs[kind], ...patch } };
     localStorage.setItem(taskKey(kind), JSON.stringify(next[kind]));
     setTaskConfigs(next);
@@ -95,6 +96,17 @@ export function MobileSettings() {
           <div className="m-task-config" key={task.key}>
             <div className="m-task-config-head"><strong>{task.label}</strong><span className="m-hint">{task.hint}</span></div>
             <div className="m-task-config-row">
+              <label>
+                <span>执行模式</span>
+                <select
+                  aria-label={`${task.label}执行模式`}
+                  value={taskConfigs[task.key].mode ?? "agent"}
+                  onChange={(event) => updateConfig(task.key, { mode: event.target.value as "direct" | "agent" })}
+                >
+                  <option value="agent">Agent（可扩展 Skill/MCP）</option>
+                  <option value="direct">直连（兼容模式）</option>
+                </select>
+              </label>
               <label>
                 <span>供应商</span>
                 <select

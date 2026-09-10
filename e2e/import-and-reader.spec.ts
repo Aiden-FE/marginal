@@ -223,9 +223,67 @@ test.describe("移动端全流程（demo provider，IndexedDB）", () => {
     await expect(page.getByText("存储引擎")).toBeVisible();
     const engine = page.getByText("indexeddb");
     await expect(engine.first()).toBeVisible();
+    await expect(page.getByLabel("章节切分执行模式")).toHaveValue("agent");
 
     // 诊断演示供应商
     await page.getByRole("button", { name: "连通性诊断" }).first().click();
     await waitForToast(page, "浏览器可直连");
+  });
+
+  test("AI 智能切分：导入预览经 Agent 网关重切（demo 供应商）", async ({ page }) => {
+    await openApp(page);
+    await importSampleBook(page);
+    // 设置里存在「章节切分」任务行，且默认 Agent 模式
+    // （设置检查放在导入前会离开流程，这里直接在预览页触发 AI 切分）
+    await page.getByRole("button", { name: /AI 智能切分/ }).click();
+    await waitForToast(page, "AI 切分完成：8 章");
+    await expect(page.locator(".m-chapter-card")).toHaveCount(8, { timeout: 10_000 });
+    // AI 结果仍需人工确认后入库
+    await page.getByRole("button", { name: /确认导入 8 章/ }).click();
+    await waitForToast(page, "已导入 8 章");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+
+    // 修复页提供本地/AI 两种重切入口
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: "修复与修订" }).click();
+    await expect(page.getByRole("button", { name: "本地重新切分" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "AI 智能切分" })).toBeVisible();
+  });
+
+  test("沉浸阅读：默认沉浸、点按唤出、自动收起、主题色融合", async ({ page }) => {
+    await openApp(page);
+    await importSampleBook(page);
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await waitForToast(page, "已导入");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+
+    // 进入即沉浸：应用壳层导航不在，工具栏收起
+    await expect(page.locator(".m-tabs")).toHaveCount(0);
+    await expect(page.locator(".m-reader-bottom")).toBeHidden();
+
+    // 点按中央唤出工具栏
+    await page.locator(".m-reader-tap-toggle").click();
+    await expect(page.locator(".m-reader-bottom")).toBeVisible();
+    await expect(page.locator(".m-reader-top")).toBeVisible();
+
+    // 夜间切换后浏览器主题色与阅读背景融合
+    await page.getByRole("button", { name: "夜间" }).click();
+    await expect(page.locator("meta[name='theme-color']")).toHaveAttribute("content", "#171816");
+    await expect(page.locator(".m-reader.theme-dark")).toBeVisible();
+
+    // 8 秒无操作自动收起
+    await page.waitForTimeout(8800);
+    await expect(page.locator(".m-reader-bottom")).toBeHidden();
+
+    // 菜单里可关闭沉浸模式，工具栏恢复常显
+    await page.locator(".m-reader-tap-toggle").click();
+    await page.getByRole("button", { name: "更多操作" }).click();
+    const immersiveToggle = page.getByRole("button", { name: "退出沉浸阅读" });
+    await expect(immersiveToggle).toHaveAttribute("aria-pressed", "true");
+    await immersiveToggle.click();
+    await expect(page.locator(".m-reader-bottom")).toBeVisible();
+    await page.waitForTimeout(4500);
+    await expect(page.locator(".m-reader-bottom")).toBeVisible();
   });
 });

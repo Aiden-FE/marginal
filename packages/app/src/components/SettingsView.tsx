@@ -5,7 +5,8 @@ import { uuidv7 } from "@marginal/core";
 import { store, useStore, type ProviderEntry } from "../store";
 import { diagnose as diagnoseAction, saveProvider, deleteProvider } from "../actions";
 
-const TASKS: { key: "repair" | "extract" | "illustration"; label: string; hint: string }[] = [
+const TASKS: { key: "repair" | "restructure" | "extract" | "illustration"; label: string; hint: string }[] = [
+  { key: "restructure", label: "章节切分", hint: "AI 识别章节边界（导入预览可调用）" },
   { key: "repair", label: "修复", hint: "便宜模型够用（清洗/边界复核）" },
   { key: "extract", label: "实体提取", hint: "便宜模型够用（JSON 输出）" },
   { key: "illustration", label: "插图生成", hint: "必须支持参考图输入（OpenAI edits 形状或火山方舟形状）" },
@@ -80,17 +81,23 @@ export function SettingsView() {
         <b>任务类型默认配置</b>
         <p className="muted">每类任务独立配置供应商与模型（spec §4.5）；书内可覆盖。</p>
         <table className="list">
-          <thead><tr><th>任务</th><th>供应商</th><th>模型</th><th className="muted">建议</th></tr></thead>
+          <thead><tr><th>任务</th><th>供应商</th><th>执行模式</th><th>模型</th><th className="muted">建议</th></tr></thead>
           <tbody>
             {TASKS.map((t) => {
               const saved = localStorage.getItem(taskConfigKey(t.key));
-              const cfg = saved ? JSON.parse(saved) : { providerId: "demo", model: "demo" };
+              const cfg = saved ? JSON.parse(saved) : { providerId: "demo", model: "demo", mode: "agent" };
               return (
                 <tr key={t.key}>
                   <td>{t.label}</td>
                   <td>
                     <select value={cfg.providerId} onChange={(e) => localStorage.setItem(taskConfigKey(t.key), JSON.stringify({ ...cfg, providerId: e.target.value }))}>
                       {store.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <select aria-label={`${t.label}执行模式`} value={cfg.mode ?? "agent"} onChange={(e) => localStorage.setItem(taskConfigKey(t.key), JSON.stringify({ ...cfg, mode: e.target.value }))}>
+                      <option value="agent">Agent</option>
+                      <option value="direct">直连</option>
                     </select>
                   </td>
                   <td>

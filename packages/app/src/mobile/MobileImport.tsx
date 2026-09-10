@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { proposeStructure, type ProposedChapter } from "@marginal/core";
+import { proposeStructure, splitChaptersWithAi, type ProposedChapter } from "@marginal/core";
 import { confirmImport } from "../actions";
 import { decodeText, store } from "../store";
 import { mergeChapterUp, splitChapterAt } from "./logic";
@@ -16,6 +16,7 @@ export function MobileImport({ onBack, onImported }: { onBack: () => void; onImp
   const [title, setTitle] = useState("");
   const [split, setSplit] = useState<{ index: number; line: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const lines = useMemo(() => draft?.text.split(/\r\n|\r|\n/) ?? [], [draft?.text]);
 
   async function loadFile(file: File) {
@@ -62,6 +63,22 @@ export function MobileImport({ onBack, onImported }: { onBack: () => void; onImp
     setSplit(null);
   }
 
+  async function aiSplit() {
+    if (!draft || aiBusy || busy) return;
+    setAiBusy(true);
+    try {
+      const config = store.defaultTaskConfig("restructure");
+      const { agent } = store.getAgent("restructure");
+      const chapters = await splitChaptersWithAi(agent, config.model, draft.text);
+      setDraft({ ...draft, chapters });
+      store.notify(`AI 切分完成：${chapters.length} 章，请确认后导入`);
+    } catch (error) {
+      store.notify(`AI 切分失败：${error instanceof Error ? error.message : error}，已保留本地提案`);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function confirm() {
     if (!draft || busy) return;
     setBusy(true);
@@ -106,6 +123,9 @@ export function MobileImport({ onBack, onImported }: { onBack: () => void; onImp
               <div><strong>{draft.chapters.length}</strong><span>章节</span></div>
               <div><strong>{draft.chapters.filter((chapter) => chapter.lowConfidence).length}</strong><span>低置信</span></div>
               <p>可并入上一章，或用步进器选择正文行拆分。</p>
+              <button className="m-secondary m-wide" disabled={aiBusy || busy} onClick={() => void aiSplit()}>
+                {aiBusy ? "AI 切分中…" : "✨ AI 智能切分（用「章节切分」任务的供应商）"}
+              </button>
             </div>
 
             <div className="m-chapter-cards">

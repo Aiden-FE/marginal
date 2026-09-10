@@ -43,15 +43,14 @@ describe("detectUiMode", () => {
 });
 
 describe("章节编辑（切分预览共用逻辑）", () => {
+  // 章节正文刻意写得足够长：低于最小体量的章会被合并保护并掉，这里要测的是手动编辑逻辑
   const text = [
     "第一章 起点",
-    "正文一。",
-    "正文二。",
+    ...Array.from({ length: 8 }, (_, i) => `起点章第${i + 1}段正文，保持足够的章节体量，避免触发短章合并保护。`),
     "第二章 转折",
-    "正文三。",
-    "正文四。",
+    ...Array.from({ length: 8 }, (_, i) => `转折章第${i + 1}段正文，保持足够的章节体量，避免触发短章合并保护。`),
     "第三章 终点",
-    "正文五。",
+    ...Array.from({ length: 8 }, (_, i) => `终点章第${i + 1}段正文，保持足够的章节体量，避免触发短章合并保护。`),
   ].join("\n");
   const chapters: ProposedChapter[] = proposeStructure(text);
 
@@ -75,7 +74,7 @@ describe("章节编辑（切分预览共用逻辑）", () => {
   it("在行边界拆分：标题取自拆分行", () => {
     const split = splitChapterAt(text, chapters, 0, 2);
     expect(split).toHaveLength(chapters.length + 1);
-    expect(split[0]).toMatchObject({ title: "正文二。", startLine: 0, endLine: 2 });
+    expect(split[0]).toMatchObject({ title: text.split("\n")[2], startLine: 0, endLine: 2 });
     expect(split[1]).toMatchObject({ title: "（未命名）", startLine: 2, endLine: chapters[0].endLine });
   });
 

@@ -14,12 +14,15 @@ export async function importSampleBook(page: Page) {
   return { title };
 }
 
-/** 阅读器工具栏若隐藏则点击中央唤起 */
+/** 阅读器工具栏若隐藏则点击中央唤起（沉浸模式下工具栏会自动收起，调用后短暂可见） */
 export async function showReaderChrome(page: import("@playwright/test").Page) {
   const bottom = page.locator(".m-reader-bottom");
-  if (await bottom.isVisible()) return;
-  await page.locator(".m-reader-tap-toggle").click();
+  const top = page.locator(".m-reader-top");
+  if (!(await bottom.isVisible()) || !(await top.isVisible())) {
+    await page.locator(".m-reader-tap-toggle").click();
+  }
   await bottom.waitFor({ state: "visible", timeout: 5000 });
+  await top.waitFor({ state: "visible", timeout: 5000 });
 }
 
 /** 刷新后从书架重新打开第一本书进入阅读器 */
