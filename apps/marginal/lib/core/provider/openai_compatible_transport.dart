@@ -70,6 +70,32 @@ class OpenAICompatibleTransport implements ProviderTransport {
   final HttpJsonClient? client;
 
   @override
+  ProviderCapabilities get capabilities => _capabilities;
+  ProviderCapabilities _capabilities = const ProviderCapabilities();
+
+  /// 最小 chat+tools 探测：发送一条只带一个工具的请求。
+  /// 探测失败（网络错误或 4xx/5xx 拒绝 tools 参数）时降级为
+  /// JSON action 协议（supportsTools=false, jsonActionFallback=true），
+  /// 之后 [AgentRuntime] 会自动改走 JSON action 降级路径。
+  Future<ProviderCapabilities> probeCapabilities() async {
+    final probe = ChatRequest(
+      messages: [ChatMessage(role: ChatRole.user, content: 'ping')],
+      tools: [ToolSpec(name: 'ping')],
+    );
+    ProviderCapabilities probed = const ProviderCapabilities();
+    try {
+      await complete(probe);
+    } on Object {
+      probed = const ProviderCapabilities(
+        supportsTools: false,
+        jsonActionFallback: true,
+      );
+    }
+    _capabilities = probed;
+    return probed;
+  }
+
+  @override
   Future<ChatResponse> complete(ChatRequest request) async {
     final uri = Uri.parse('$baseUrl/chat/completions');
     final requestHeaders = <String, String>{

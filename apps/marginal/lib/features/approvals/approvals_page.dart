@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
 import '../../app/approval_service.dart';
@@ -16,6 +14,7 @@ class ApprovalsPage extends StatefulWidget {
 
 class _ApprovalsPageState extends State<ApprovalsPage> {
   List<Proposal> _items = [];
+  final Set<String> _selected = {};
   late final ApprovalService _service;
   @override
   void initState() {
@@ -31,9 +30,46 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
     if (mounted) setState(() => _items = items);
   }
 
+  List<String> _diff(Proposal p) {
+    try {
+      final j = decodeMap(p.payload);
+      if (p.type == 'text_repair') {
+        final patches = (j['patches'] as List? ?? const []);
+        return [
+          '章节：${j['chapterId'] ?? '未知'}',
+          for (final raw in patches)
+            '段落 ${(raw as Map)['paraIndex']}: “${raw['original']}” → “${raw['replacement']}”',
+        ];
+      }
+      return ['类型：${p.type}', '操作：${j['operation'] ?? j['action'] ?? '结构化提案'}'];
+    } catch (_) {
+      return ['无效提案数据'];
+    }
+  }
+
+  Future<void> _approveBatch() async {
+    final batch = _items.where(
+      (p) =>
+          _selected.contains(p.id) &&
+          p.status == 'pending' &&
+          p.type == 'text_repair',
+    );
+    for (final p in batch) {
+      await _service.approve(p);
+    }
+    if (mounted) setState(() => _selected.clear());
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('提案审批')),
+    appBar: AppBar(
+      title: const Text('提案审批'),
+      actions: [
+        if (_selected.isNotEmpty)
+          TextButton(onPressed: _approveBatch, child: const Text('批量批准安全类型')),
+      ],
+    ),
     body: _items.isEmpty
         ? const Center(child: Text('还没有提案。'))
         : ListView(
@@ -42,10 +78,20 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
               for (final p in _items)
                 Card(
                   child: ListTile(
+                    leading: p.status == 'pending' && p.type == 'text_repair'
+                        ? Checkbox(
+                            value: _selected.contains(p.id),
+                            onChanged: (v) => setState(
+                              () => v == true
+                                  ? _selected.add(p.id)
+                                  : _selected.remove(p.id),
+                            ),
+                          )
+                        : null,
                     title: Text('${p.type} · ${p.status}'),
-                    subtitle: Text(
-                      const JsonEncoder.withIndent('  ')
-                          .convert(jsonDecode(p.payload)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [for (final line in _diff(p)) Text(line)],
                     ),
                     isThreeLine: true,
                     trailing: p.status != 'pending'

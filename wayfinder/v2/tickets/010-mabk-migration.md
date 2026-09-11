@@ -25,3 +25,8 @@ blocked-by: [5]
 ## Resolution
 
 实现完成。v1 bundle.json/chapterTexts 兼容、ZIP blobs、format version 校验、copy re-id、blobData 完整导入与覆盖/副本语义已实现；round-trip、copy 与迁移测试通过。
+
+## Review 轮补齐（2026-09-11）
+
+- reidForCopy 修复：Anchor.targetId 指向 blob 时映射到副本 blob id，副本锚点插图不再断链（测试覆盖）。
+- Bundle 支持Revision 读取/导出/副本重映射，四驱动均支持 Revision 存取与删除级联。

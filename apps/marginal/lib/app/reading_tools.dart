@@ -41,13 +41,11 @@ ToolRegistry readingTools({
       handler: (a) async {
         final c = (await repository.listChapters(workId))
             .firstWhere((x) => x.id == a['chapterId']);
+        final text = await repository.getChapterText(c.id);
         return {
           'id': c.id,
           'title': c.title,
-          'text': (await repository.getChapterText(c.id)).substring(
-            0,
-            (await repository.getChapterText(c.id)).length.clamp(0, 30000),
-          ),
+          'text': text.substring(0, text.length.clamp(0, 30000)),
         };
       },
     ),
@@ -85,7 +83,7 @@ ToolRegistry readingTools({
     FunctionAgentTool(
       name: 'propose_text_repair',
       description: '提出正文修复提案',
-      requiresApproval: true,
+      risk: AgentToolRisk.write,
       parameterSchema: {
         'type': 'object',
         'required': ['chapterId', 'patches'],
@@ -111,7 +109,7 @@ ToolRegistry readingTools({
     FunctionAgentTool(
       name: 'propose_chapter_split',
       description: '提出章节切分提案',
-      requiresApproval: true,
+      risk: AgentToolRisk.write,
       parameterSchema: {
         'type': 'object',
         'required': ['sourceChapterId', 'chapters'],

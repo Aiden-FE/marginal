@@ -77,6 +77,9 @@ Uint8List buildBundle(
     toolCalls: (j['toolCalls'] as List? ?? [])
         .map((x) => ToolCall.fromJson(Map<String, dynamic>.from(x)))
         .toList(),
+    revisions: (j['revisions'] as List? ?? [])
+        .map((x) => Revision.fromJson(Map<String, dynamic>.from(x)))
+        .toList(),
   );
   return (
     data: d,
@@ -124,7 +127,7 @@ BundleData reidForCopy(BundleData d) {
             id: '$workId-${a.id}',
             workId: workId,
             chapterId: cm[a.chapterId] ?? a.chapterId,
-            targetId: a.targetId,
+            targetId: bm[a.targetId] ?? a.targetId,
             paraIndex: a.paraIndex,
             charOffset: a.charOffset,
             targetType: a.targetType,
@@ -191,6 +194,18 @@ BundleData reidForCopy(BundleData d) {
             resultSummary: c.resultSummary,
             status: c.status,
             startedAt: c.startedAt,
+          ),
+        )
+        .toList(),
+    revisions: d.revisions
+        .map(
+          (r) => Revision(
+            id: '$workId-${r.id}',
+            workId: workId,
+            proposalId: propm[r.proposalId] ?? r.proposalId,
+            beforeSnapshot: r.beforeSnapshot,
+            afterSnapshot: r.afterSnapshot,
+            createdAt: r.createdAt,
           ),
         )
         .toList(),

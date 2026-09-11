@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../app/platform_services.dart';
+import '../../app/reader_projection.dart';
 import '../../core/types.dart';
 import '../agent/agent_page.dart';
 import '../approvals/approvals_page.dart';
@@ -27,6 +28,8 @@ class _ReaderPageState extends State<ReaderPage> {
   int _index = 0;
   bool _loading = true;
   final Map<int, Uint8List> _images = {};
+  late final ReaderProjectionService _projectionService =
+      ReaderProjectionService(widget.services.repository);
   @override
   void initState() {
     super.initState();
@@ -34,9 +37,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _load() async {
-    final chapters =
-        await widget.services.repository.listChapters(widget.work.id)
-          ..sort((a, b) => a.idx.compareTo(b.idx));
+    final chapters = await _projectionService.chapters(widget.work.id);
     if (chapters.isEmpty) {
       if (mounted) setState(() => _loading = false);
       return;
@@ -60,31 +61,18 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _open(List<Chapter> chapters, int index) async {
-    final chapter = chapters[index];
-    final text = await widget.services.repository.getChapterText(chapter.id);
-    final anchors = (await widget.services.repository.listAnchors(
+    final projection = await _projectionService.projection(
       widget.work.id,
-    )).where((a) => a.chapterId == chapter.id && a.state == 'active');
-    final images = <int, Uint8List>{};
-    for (final anchor in anchors) {
-      for (final blob in await widget.services.repository.listBlobs(
-        widget.work.id,
-      )) {
-        if (blob.id == anchor.targetId) {
-          final data = await widget.services.repository.getBlobData(
-            blob.storageKey,
-          );
-          if (data != null) images[anchor.paraIndex] = data;
-        }
-      }
-    }
+      chapters[index],
+    );
     if (!mounted) return;
     setState(() {
       _chapters = chapters;
       _index = index;
-      _text = text;
-      _images.clear();
-      _images.addAll(images);
+      _text = projection.text;
+      _images
+        ..clear()
+        ..addAll(projection.images);
       _loading = false;
     });
   }

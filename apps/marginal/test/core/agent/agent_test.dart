@@ -2,6 +2,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:marginal/core/agent/agent.dart';
 import 'package:marginal/core/provider/provider.dart';
 
+class _JsonActionTransport implements ProviderTransport {
+  _JsonActionTransport(this._responses);
+  final List<ChatResponse> _responses;
+  final requests = <ChatRequest>[];
+  @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities(
+    supportsTools: false,
+    jsonActionFallback: true,
+  );
+  @override
+  Future<ChatResponse> complete(ChatRequest request) async {
+    requests.add(request);
+    return _responses.removeAt(0);
+  }
+}
+
 void main() {
   test('schema validates required, types and extras', () {
     final s = {
@@ -59,6 +75,34 @@ void main() {
     final cp = AgentCheckpoint.decode(runtime.lastCheckpoint!.encode());
     expect(cp.messages.length, runtime.history.length);
   });
+  test('json action fallback triggers approval and completes', () async {
+    final registry = ToolRegistry();
+    registry.register(
+      FunctionAgentTool(
+        name: 'danger',
+        risk: AgentToolRisk.write,
+        parameterSchema: {'type': 'object'},
+        handler: (a) async => 'ok',
+      ),
+    );
+    final transport = _JsonActionTransport([
+      ChatResponse.text('{"tool":"danger","arguments":{}}'),
+      ChatResponse.text('finished'),
+    ]);
+    final rt = AgentRuntime(
+      transport: transport,
+      toolRegistry: registry,
+      systemPrompt: 'Use tools.',
+    );
+    final future = rt.run('x');
+    await Future<void>.delayed(Duration.zero);
+    expect(transport.requests.single.tools, isEmpty);
+    expect(rt.status, AgentStatus.awaitingApproval);
+    await rt.approveToolCalls();
+    expect((await future).status, AgentStatus.completed);
+    expect((await future).output, 'finished');
+  });
+
   test('approval pauses and resumes', () async {
     final registry = ToolRegistry();
     registry.register(

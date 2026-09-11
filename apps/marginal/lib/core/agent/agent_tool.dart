@@ -16,11 +16,16 @@ class AgentToolResult {
   Map<String, Object?> toJson() => {'content': content, 'is_error': isError};
 }
 
+/// 工具风险分级（工单 003 §3）：read 自动执行；write 必须经审批门。
+enum AgentToolRisk { read, write }
+
 abstract interface class AgentTool {
   String get name;
   String get description;
   Map<String, Object?> get parameterSchema;
-  bool get requiresApproval => false;
+  AgentToolRisk get risk;
+  int get schemaVersion;
+  bool get requiresApproval => risk == AgentToolRisk.write;
   Future<AgentToolResult> invoke(Map<String, Object?> arguments);
 }
 
@@ -30,8 +35,11 @@ class FunctionAgentTool implements AgentTool {
     this.description = '',
     required this.parameterSchema,
     required this.handler,
-    this.requiresApproval = false,
+    this.risk = AgentToolRisk.read,
+    this.schemaVersion = 1,
+    this._requiresApproval,
   });
+
   @override
   final String name;
   @override
@@ -40,7 +48,14 @@ class FunctionAgentTool implements AgentTool {
   final Map<String, Object?> parameterSchema;
   final AgentToolHandler handler;
   @override
-  final bool requiresApproval;
+  final AgentToolRisk risk;
+  @override
+  final int schemaVersion;
+  final bool? _requiresApproval;
+  @override
+  bool get requiresApproval =>
+      (_requiresApproval ?? false) || risk == AgentToolRisk.write;
+
   @override
   Future<AgentToolResult> invoke(Map<String, Object?> arguments) async {
     final value = await handler(arguments);

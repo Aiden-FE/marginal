@@ -26,3 +26,9 @@ blocked-by: [5, 8]
 ## Resolution
 
 实现完成。Proposal pending/approved/rejected、逐条审批页、正文修复应用、会话提案查询与拒绝路径已实现；vertical slice 验证批准后正文更新且未批准不写入。
+
+## Review 轮补齐（2026-09-11）
+
+- 类型化 ProposalKind/ProposalStatus/TextRepairPayload；未知 kind 不允许 approved。
+- 批准 text_repair 写 before/after 快照并生成 Revision；rollbackRun 逆序恢复正文并标记 rolled_back。
+- 审批页展示结构化段落 diff；批量批准仅限 text_repair，coverage/delete 永不批量。

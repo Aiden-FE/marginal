@@ -19,6 +19,8 @@ class DemoTransport implements ProviderTransport {
   final requests = <ChatRequest>[];
   int get requestCount => requests.length;
   @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities();
+  @override
   Future<ChatResponse> complete(ChatRequest request) async {
     requests.add(request);
     if (_script.isNotEmpty) return await _script.removeAt(0)(request);

@@ -22,6 +22,13 @@ blocked-by: [6, 9, 10]
 
 依赖：006、009、010。
 
-## Resolution
+## Resolution（2026-09-11 更新）
 
 实现链路已完成并验证 H5/Android：全量 Flutter 测试 23/23 通过，analyze 零告警，Web release 和 Android debug APK 构建成功；iOS 模拟器构建因 GitHub Swift Package 网络超时失败。旧 packages/、src-tauri/ 尚未删除，Vercel 尚未切换——删除是不可逆操作，且应在 iOS 门通过并得到单独确认后执行。
+
+## 当前状态（2026-09-11 review 轮后）
+
+- 可执行部分全部完成：38/38 flutter 测试、analyze 零告警、`flutter build web --release` 与 `flutter build apk --debug` 成功；vertical slice 链路（导入→阅读→Agent 审批提案→修订→断网重开→.mabk 副本）由 e2e 测试覆盖。
+- 未完成项（保持 open 的原因）：
+  1. iOS 模拟器构建被环境阻塞：Xcode 26.6 经 DEVELOPER_DIR 可用，但 file_picker 的 SPM 依赖 DKImagePickerController 克隆 github.com 超时（网络问题，非代码问题）。
+  2. 删除旧 packages/ 与 src-tauri/、用 Flutter Web 替换 Vercel H5：破坏性操作，按 002 §8/§10 应在 iOS 门通过且用户单独确认后执行。

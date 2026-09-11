@@ -14,6 +14,7 @@ class MemoryRepository implements Repository {
   final Map<String, AgentRun> _runs = {};
   final Map<String, ToolCall> _calls = {};
   final Map<String, BlobRec> _blobs = {};
+  final Map<String, Revision> _revisions = {};
   final Map<String, Uint8List> _blobData = {};
   @override
   String get engine => 'memory';
@@ -35,6 +36,7 @@ class MemoryRepository implements Repository {
     _anchors.removeWhere((_, v) => v.workId == id);
     _prompts.removeWhere((_, v) => v.workId == id);
     _proposals.removeWhere((_, v) => v.workId == id);
+    _revisions.removeWhere((_, v) => v.workId == id);
     _runs.removeWhere((_, v) => v.workId == id);
     _blobs.removeWhere((_, v) => v.workId == id);
   }
@@ -110,6 +112,13 @@ class MemoryRepository implements Repository {
   }
 
   @override
+  Future<List<Revision>> listRevisions(String workId) async =>
+      _revisions.values.where((v) => v.workId == workId).toList();
+  @override
+  Future<void> putRevision(Revision value) async =>
+      _revisions[value.id] = value;
+
+  @override
   Future<List<AgentRun>> listAgentRuns(String workId) async =>
       _runs.values.where((v) => v.workId == workId).toList();
   @override
@@ -144,6 +153,7 @@ class MemoryRepository implements Repository {
     blobs: await listBlobs(workId),
     prompts: await listPrompts(workId),
     proposals: await listProposals(workId),
+    revisions: await listRevisions(workId),
     runs: await listAgentRuns(workId),
     toolCalls: (await Future.wait(
       (await listAgentRuns(workId)).map((r) => listToolCalls(r.id)),
@@ -172,6 +182,9 @@ class MemoryRepository implements Repository {
     for (final p in payload.proposals) {
       await putProposal(p);
     }
+    for (final r in payload.revisions) {
+      await putRevision(r);
+    }
     for (final r in payload.runs) {
       await putAgentRun(r);
     }
@@ -191,6 +204,7 @@ class MemoryRepository implements Repository {
     _anchors.clear();
     _prompts.clear();
     _proposals.clear();
+    _revisions.clear();
     _runs.clear();
     _calls.clear();
     _blobs.clear();

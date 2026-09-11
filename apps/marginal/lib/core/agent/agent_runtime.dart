@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../provider/provider_transport.dart';
 import 'agent_budget.dart';
@@ -45,7 +46,7 @@ class AgentRuntime {
   List<ChatMessage> get history => List.unmodifiable(_messages);
   AgentCheckpoint? lastCheckpoint;
   BudgetUsage get usage => _ledger?.usage ?? const BudgetUsage();
-  int _runCounter = 0, _checkpointCounter = 0;
+  int _runCounter = 0, _checkpointCounter = 0, _jsonActionCounter = 0;
   BudgetTracker? _ledger;
   Completer<_ApprovalDecision>? _approvalGate;
   String? _cancelReason;
@@ -62,14 +63,18 @@ class AgentRuntime {
     _currentTurn = 0;
     _cancelled = false;
     _cancelReason = null;
-    _messages.add(ChatMessage(role: ChatRole.user, content: userInput));
-    if (systemPrompt != null &&
-        (_messages.isEmpty || _messages.first.role != ChatRole.system)) {
-      _messages.insert(
-        0,
-        ChatMessage(role: ChatRole.system, content: systemPrompt),
-      );
+    // Each terminal run owns an independent conversation history.
+    _messages.clear();
+    final prompt = systemPrompt == null
+        ? null
+        : transport.capabilities.supportsTools
+        ? systemPrompt
+        : '$systemPrompt\n\nWhen tools are unavailable, use this JSON action protocol. '
+              'Output only {"tool":"name","arguments":{...}} to call a tool.';
+    if (prompt != null) {
+      _messages.add(ChatMessage(role: ChatRole.system, content: prompt));
     }
+    _messages.add(ChatMessage(role: ChatRole.user, content: userInput));
     _setStatus(AgentStatus.running);
     _emit(RunStartedEvent(runId));
     await _saveCheckpoint();
@@ -101,8 +106,16 @@ class AgentRuntime {
         _ledger!.turn();
         _currentTurn++;
         final response = await transport.complete(
-          ChatRequest(messages: history, tools: toolRegistry.specs),
+          ChatRequest(
+            messages: history,
+            tools: transport.capabilities.supportsTools
+                ? toolRegistry.specs
+                : const [],
+          ),
         );
+        final effective = transport.capabilities.supportsTools
+            ? response
+            : _withJsonActionFallback(response);
         if (_cancelled) {
           return _finish(
             runId,
@@ -110,23 +123,23 @@ class AgentRuntime {
             RunCancelledEvent(_cancelReason ?? 'cancelled'),
           );
         }
-        if (response.usage != null) {
-          _ledger!.tokensUsed(response.usage!.totalTokens);
+        if (effective.usage != null) {
+          _ledger!.tokensUsed(effective.usage!.totalTokens);
         }
-        _messages.add(response.message);
+        _messages.add(effective.message);
         _emit(
           AssistantMessageEvent(
-            response.message.content,
-            toolCalls: response.message.toolCalls.length,
+            effective.message.content,
+            toolCalls: effective.message.toolCalls.length,
           ),
         );
         await _saveCheckpoint();
-        final calls = response.message.toolCalls;
+        final calls = effective.message.toolCalls;
         if (calls.isEmpty) {
           return _finish(
             runId,
             AgentStatus.completed,
-            RunCompletedEvent(response.message.content ?? '', _currentTurn),
+            RunCompletedEvent(effective.message.content ?? '', _currentTurn),
           );
         }
         for (final call in calls) {
@@ -211,6 +224,38 @@ class AgentRuntime {
         error: e.toString(),
       );
     }
+  }
+
+  /// Parses a plain-text assistant reply shaped like
+  /// {"tool":"name","arguments":{...}} into a synthetic tool-call response.
+  /// Anything else is the provider's final answer.
+  ChatResponse _withJsonActionFallback(ChatResponse response) {
+    final content = response.message.content?.trim() ?? '';
+    if (content.isEmpty) return response;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(content);
+    } on FormatException {
+      return response;
+    }
+    if (decoded is! Map) return response;
+    final name = decoded['tool'];
+    if (name is! String || name.isEmpty) return response;
+    final rawArgs = decoded['arguments'];
+    if (rawArgs != null && rawArgs is! Map) return response;
+    final args =
+        (rawArgs as Map?)?.cast<String, Object?>() ?? const <String, Object?>{};
+    return ChatResponse.toolCalls(
+      [
+        ToolCall(
+          id: 'json-action-${++_jsonActionCounter}',
+          name: name,
+          arguments: args,
+        ),
+      ],
+      content: response.message.content,
+      usage: response.usage,
+    );
   }
 
   Future<void> approveToolCalls() async {

@@ -29,3 +29,10 @@ blocked-by: [7]
 ## Resolution
 
 实现完成。AgentRuntime 已实现多轮工具循环、JSON Schema 校验、写工具审批门、事件流、checkpoint、取消、预算终止与双协议 DTO；Agent 单测和 vertical slice 测试通过。
+
+## Review 轮补齐（2026-09-11）
+
+- AgentTool 增加 risk（read/write）与 schemaVersion；write 自动进入审批门。
+- AgentExecutionSession 将 AgentRun（含 token 用量、lastCheckpoint JSON）与每次 ToolCall（输入/结果摘要、schemaVersion、risk、awaiting_approval/approved/rejected/completed/failed 状态）持久化到 Repository；取消/失败/超预算时本 run 的 pending 提案标记 expired。
+- ProviderCapabilities + probeCapabilities：探测失败自动降级 JSON action 协议（不发 tools、解析 {"tool":...} 文本为合成工具调用），含专项测试。
+- 每次 run 清空消息历史，避免跨会话事件混淆。

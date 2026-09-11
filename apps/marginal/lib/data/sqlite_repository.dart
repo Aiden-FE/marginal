@@ -38,6 +38,9 @@ class SqliteRepository implements Repository {
       'CREATE TABLE IF NOT EXISTS proposals(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
     );
     db.execute(
+      'CREATE TABLE IF NOT EXISTS revisions(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
+    );
+    db.execute(
       'CREATE TABLE IF NOT EXISTS agent_runs(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
     );
     db.execute(
@@ -92,6 +95,7 @@ class SqliteRepository implements Repository {
       'anchors',
       'prompts',
       'proposals',
+      'revisions',
       'agent_runs',
       'blobs',
     ]) {
@@ -225,6 +229,15 @@ class SqliteRepository implements Repository {
   }
 
   @override
+  Future<List<Revision>> listRevisions(String workId) =>
+      _list('revisions', workId, (s) => Revision.fromJson(_dec(s)));
+  @override
+  Future<void> putRevision(Revision value) async => db.execute(
+    'INSERT INTO revisions(id,work_id,json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET work_id=excluded.work_id,json=excluded.json',
+    [value.id, value.workId, _enc(value.toJson())],
+  );
+
+  @override
   Future<List<AgentRun>> listAgentRuns(String workId) =>
       _list('agent_runs', workId, (s) => AgentRun.fromJson(_dec(s)));
   @override
@@ -276,6 +289,7 @@ class SqliteRepository implements Repository {
       blobs: await listBlobs(workId),
       prompts: await listPrompts(workId),
       proposals: await listProposals(workId),
+      revisions: await listRevisions(workId),
       runs: runs,
       toolCalls: [for (final r in runs) ...await listToolCalls(r.id)],
     );
@@ -304,6 +318,9 @@ class SqliteRepository implements Repository {
       for (final p in payload.proposals) {
         await putProposal(p);
       }
+      for (final r in payload.revisions) {
+        await putRevision(r);
+      }
       for (final r in payload.runs) {
         await putAgentRun(r);
       }
@@ -328,6 +345,7 @@ class SqliteRepository implements Repository {
         'tool_calls',
         'agent_runs',
         'proposals',
+        'revisions',
         'prompts',
         'anchors',
         'chapters',

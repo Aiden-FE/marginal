@@ -1,6 +1,16 @@
 import 'dart:convert';
 
+class ProviderCapabilities {
+  const ProviderCapabilities({
+    this.supportsTools = true,
+    this.jsonActionFallback = false,
+  });
+  final bool supportsTools;
+  final bool jsonActionFallback;
+}
+
 abstract interface class ProviderTransport {
+  ProviderCapabilities get capabilities;
   Future<ChatResponse> complete(ChatRequest request);
 }
 

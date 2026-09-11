@@ -30,7 +30,7 @@ title: Marginal v2 重建：Flutter H5/iOS/Android + 客户端 Agent Runtime
 - [005 数据层](tickets/005-dart-data-layer.md) → [010 .mabk 迁移](tickets/010-mabk-migration.md)
 - [006 阅读器](tickets/006-reader-scroll.md) + [009 提案审批](tickets/009-proposal-approval.md) + [010 .mabk 迁移](tickets/010-mabk-migration.md) → [011 Vertical slice](tickets/011-vertical-slice-acceptance.md)
 
-所有设计 frontier 已清空；当前 frontier 是可实施工单 004。
+实现 frontier（004–010，含 code-review 修复轮）已全部交付并验证：38/38 flutter 测试、analyze 零告警、Web release 与 Android debug APK 构建成功（提交 1812eaa 及后续修复轮）。剩余开放工单 011 仅含两项外部门：iOS 构建（被 GitHub SPM 网络超时阻塞）与旧实现删除/Vercel 切换（破坏性，待用户确认）。
 
 ## Out of scope for first delivery
 

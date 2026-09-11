@@ -123,9 +123,52 @@ class Prompt {
   );
 }
 
+enum ProposalKind { textRepair, coverage, delete }
+
+enum ProposalStatus { pending, approved, rejected, expired, rolledBack }
+
+ProposalKind parseProposalKind(String value) => switch (value) {
+  'text_repair' => ProposalKind.textRepair,
+  'coverage' => ProposalKind.coverage,
+  'delete' => ProposalKind.delete,
+  _ => throw FormatException('unknown proposal kind: $value'),
+};
+ProposalStatus parseProposalStatus(String value) => switch (value) {
+  'pending' => ProposalStatus.pending,
+  'approved' => ProposalStatus.approved,
+  'rejected' => ProposalStatus.rejected,
+  'expired' => ProposalStatus.expired,
+  'rolled_back' => ProposalStatus.rolledBack,
+  _ => throw FormatException('unknown proposal status: $value'),
+};
+
+class TextRepairPayload {
+  final String chapterId;
+  final List<Map<String, dynamic>> patches;
+  const TextRepairPayload({required this.chapterId, required this.patches});
+  factory TextRepairPayload.fromJson(Map<String, dynamic> j) {
+    if (j['chapterId'] is! String ||
+        j['chapterId'].isEmpty ||
+        j['patches'] is! List) {
+      throw const FormatException('invalid text_repair payload');
+    }
+    final patches = (j['patches'] as List).map((raw) {
+      final p = Map<String, dynamic>.from(raw as Map);
+      if (p['paraIndex'] is! num ||
+          p['original'] is! String ||
+          p['replacement'] is! String) {
+        throw const FormatException('invalid text repair patch');
+      }
+      return p;
+    }).toList();
+    return TextRepairPayload(chapterId: j['chapterId'], patches: patches);
+  }
+}
+
 class Proposal {
   final String id, workId, runId, type, payload, status;
   final int createdAt;
+  final String? beforeSnapshot, afterSnapshot;
   const Proposal({
     required this.id,
     required this.workId,
@@ -134,7 +177,11 @@ class Proposal {
     this.runId = '',
     this.status = 'pending',
     this.createdAt = 0,
+    this.beforeSnapshot,
+    this.afterSnapshot,
   });
+  ProposalKind get kind => parseProposalKind(type);
+  ProposalStatus get statusValue => parseProposalStatus(status);
   Map<String, dynamic> toJson() => {
     'id': id,
     'workId': workId,
@@ -143,6 +190,8 @@ class Proposal {
     'payload': payload,
     'status': status,
     'createdAt': createdAt,
+    if (beforeSnapshot != null) 'beforeSnapshot': beforeSnapshot,
+    if (afterSnapshot != null) 'afterSnapshot': afterSnapshot,
   };
   factory Proposal.fromJson(Map<String, dynamic> j) => Proposal(
     id: j['id'],
@@ -152,6 +201,37 @@ class Proposal {
     payload: j['payload'] ?? '',
     status: j['status'] ?? 'pending',
     createdAt: j['createdAt'] ?? 0,
+    beforeSnapshot: j['beforeSnapshot'] as String?,
+    afterSnapshot: j['afterSnapshot'] as String?,
+  );
+}
+
+class Revision {
+  final String id, workId, proposalId, beforeSnapshot, afterSnapshot;
+  final int createdAt;
+  const Revision({
+    required this.id,
+    required this.workId,
+    required this.proposalId,
+    required this.beforeSnapshot,
+    required this.afterSnapshot,
+    this.createdAt = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'proposalId': proposalId,
+    'beforeSnapshot': beforeSnapshot,
+    'afterSnapshot': afterSnapshot,
+    'createdAt': createdAt,
+  };
+  factory Revision.fromJson(Map<String, dynamic> j) => Revision(
+    id: j['id'],
+    workId: j['workId'],
+    proposalId: j['proposalId'],
+    beforeSnapshot: j['beforeSnapshot'] ?? '',
+    afterSnapshot: j['afterSnapshot'] ?? '',
+    createdAt: j['createdAt'] ?? 0,
   );
 }
 
@@ -160,6 +240,9 @@ class AgentRun {
   final int startedAt;
   final int? finishedAt;
   final int inputTokens, outputTokens;
+
+  /// 最近一次 checkpoint 的 JSON（工单 003 §1：每轮落库，H5 冻结后可恢复审计）。
+  final String lastCheckpoint;
   const AgentRun({
     required this.id,
     required this.workId,
@@ -168,7 +251,24 @@ class AgentRun {
     this.finishedAt,
     this.inputTokens = 0,
     this.outputTokens = 0,
+    this.lastCheckpoint = '',
   });
+  AgentRun copyWith({
+    String? status,
+    int? finishedAt,
+    int? inputTokens,
+    int? outputTokens,
+    String? lastCheckpoint,
+  }) => AgentRun(
+    id: id,
+    workId: workId,
+    status: status ?? this.status,
+    startedAt: startedAt,
+    finishedAt: finishedAt ?? this.finishedAt,
+    inputTokens: inputTokens ?? this.inputTokens,
+    outputTokens: outputTokens ?? this.outputTokens,
+    lastCheckpoint: lastCheckpoint ?? this.lastCheckpoint,
+  );
   Map<String, dynamic> toJson() => {
     'id': id,
     'workId': workId,
@@ -177,6 +277,7 @@ class AgentRun {
     'finishedAt': finishedAt,
     'inputTokens': inputTokens,
     'outputTokens': outputTokens,
+    'lastCheckpoint': lastCheckpoint,
   };
   factory AgentRun.fromJson(Map<String, dynamic> j) => AgentRun(
     id: j['id'],
@@ -186,12 +287,17 @@ class AgentRun {
     finishedAt: j['finishedAt'],
     inputTokens: j['inputTokens'] ?? 0,
     outputTokens: j['outputTokens'] ?? 0,
+    lastCheckpoint: j['lastCheckpoint'] ?? '',
   );
 }
 
 class ToolCall {
   final String id, runId, toolName, inputSummary, resultSummary, status;
   final int startedAt;
+
+  /// 工具 schema 版本与风险分级进入审计记录（工单 003 §3）。
+  final int schemaVersion;
+  final String risk;
   const ToolCall({
     required this.id,
     required this.runId,
@@ -200,7 +306,20 @@ class ToolCall {
     this.resultSummary = '',
     this.status = 'started',
     this.startedAt = 0,
+    this.schemaVersion = 1,
+    this.risk = 'read',
   });
+  ToolCall copyWith({String? status, String? resultSummary}) => ToolCall(
+    id: id,
+    runId: runId,
+    toolName: toolName,
+    inputSummary: inputSummary,
+    resultSummary: resultSummary ?? this.resultSummary,
+    status: status ?? this.status,
+    startedAt: startedAt,
+    schemaVersion: schemaVersion,
+    risk: risk,
+  );
   Map<String, dynamic> toJson() => {
     'id': id,
     'runId': runId,
@@ -209,6 +328,8 @@ class ToolCall {
     'resultSummary': resultSummary,
     'status': status,
     'startedAt': startedAt,
+    'schemaVersion': schemaVersion,
+    'risk': risk,
   };
   factory ToolCall.fromJson(Map<String, dynamic> j) => ToolCall(
     id: j['id'],
@@ -218,6 +339,8 @@ class ToolCall {
     resultSummary: j['resultSummary'] ?? '',
     status: j['status'] ?? 'started',
     startedAt: j['startedAt'] ?? 0,
+    schemaVersion: j['schemaVersion'] ?? 1,
+    risk: j['risk'] ?? 'read',
   );
 }
 
@@ -263,6 +386,7 @@ class BundleData {
   final List<Proposal> proposals;
   final List<AgentRun> runs;
   final List<ToolCall> toolCalls;
+  final List<Revision> revisions;
   const BundleData({
     required this.work,
     this.chapters = const [],
@@ -273,6 +397,7 @@ class BundleData {
     this.proposals = const [],
     this.runs = const [],
     this.toolCalls = const [],
+    this.revisions = const [],
   });
   Map<String, dynamic> toJson() => {
     'work': work.toJson(),
@@ -284,6 +409,7 @@ class BundleData {
     'proposals': proposals.map((x) => x.toJson()).toList(),
     'runs': runs.map((x) => x.toJson()).toList(),
     'toolCalls': toolCalls.map((x) => x.toJson()).toList(),
+    'revisions': revisions.map((x) => x.toJson()).toList(),
   };
 }
 
