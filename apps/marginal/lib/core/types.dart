@@ -1,0 +1,292 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+class Work {
+  final String id, title, author, importSource;
+  final int createdAt, updatedAt;
+  final Map<String, dynamic> settings;
+  const Work({
+    required this.id,
+    required this.title,
+    this.author = '',
+    this.importSource = '',
+    int? createdAt,
+    int? updatedAt,
+    this.settings = const {},
+  }) : createdAt = createdAt ?? 0,
+       updatedAt = updatedAt ?? 0;
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'author': author,
+    'importSource': importSource,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+    'settings': settings,
+  };
+  factory Work.fromJson(Map<String, dynamic> j) => Work(
+    id: j['id'],
+    title: j['title'] ?? '',
+    author: j['author'] ?? '',
+    importSource: j['importSource'] ?? '',
+    createdAt: j['createdAt'] ?? 0,
+    updatedAt: j['updatedAt'] ?? 0,
+    settings: Map<String, dynamic>.from(j['settings'] ?? {}),
+  );
+}
+
+class Chapter {
+  final String id, workId, title, contentHash;
+  final int idx, wordCount;
+  const Chapter({
+    required this.id,
+    required this.workId,
+    required this.idx,
+    required this.title,
+    this.wordCount = 0,
+    this.contentHash = '',
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'idx': idx,
+    'title': title,
+    'wordCount': wordCount,
+    'contentHash': contentHash,
+  };
+  factory Chapter.fromJson(Map<String, dynamic> j) => Chapter(
+    id: j['id'],
+    workId: j['workId'],
+    idx: j['idx'] ?? 0,
+    title: j['title'] ?? '',
+    wordCount: j['wordCount'] ?? 0,
+    contentHash: j['contentHash'] ?? '',
+  );
+}
+
+class Anchor {
+  final String id, workId, chapterId, targetId;
+  final int paraIndex, charOffset;
+  final String targetType, state;
+  const Anchor({
+    required this.id,
+    required this.workId,
+    required this.chapterId,
+    required this.targetId,
+    this.paraIndex = 0,
+    this.charOffset = 0,
+    this.targetType = 'illustration',
+    this.state = 'active',
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'chapterId': chapterId,
+    'targetId': targetId,
+    'paraIndex': paraIndex,
+    'charOffset': charOffset,
+    'targetType': targetType,
+    'state': state,
+  };
+  factory Anchor.fromJson(Map<String, dynamic> j) => Anchor(
+    id: j['id'],
+    workId: j['workId'],
+    chapterId: j['chapterId'],
+    targetId: j['targetId'],
+    paraIndex: j['paraIndex'] ?? 0,
+    charOffset: j['charOffset'] ?? 0,
+    targetType: j['targetType'] ?? 'illustration',
+    state: j['state'] ?? 'active',
+  );
+}
+
+class Prompt {
+  final String id, workId, text;
+  final int createdAt;
+  const Prompt({
+    required this.id,
+    required this.workId,
+    required this.text,
+    this.createdAt = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'text': text,
+    'createdAt': createdAt,
+  };
+  factory Prompt.fromJson(Map<String, dynamic> j) => Prompt(
+    id: j['id'],
+    workId: j['workId'],
+    text: j['text'] ?? '',
+    createdAt: j['createdAt'] ?? 0,
+  );
+}
+
+class Proposal {
+  final String id, workId, runId, type, payload, status;
+  final int createdAt;
+  const Proposal({
+    required this.id,
+    required this.workId,
+    required this.type,
+    required this.payload,
+    this.runId = '',
+    this.status = 'pending',
+    this.createdAt = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'runId': runId,
+    'type': type,
+    'payload': payload,
+    'status': status,
+    'createdAt': createdAt,
+  };
+  factory Proposal.fromJson(Map<String, dynamic> j) => Proposal(
+    id: j['id'],
+    workId: j['workId'],
+    runId: j['runId'] ?? '',
+    type: j['type'] ?? '',
+    payload: j['payload'] ?? '',
+    status: j['status'] ?? 'pending',
+    createdAt: j['createdAt'] ?? 0,
+  );
+}
+
+class AgentRun {
+  final String id, workId, status;
+  final int startedAt;
+  final int? finishedAt;
+  final int inputTokens, outputTokens;
+  const AgentRun({
+    required this.id,
+    required this.workId,
+    this.status = 'running',
+    this.startedAt = 0,
+    this.finishedAt,
+    this.inputTokens = 0,
+    this.outputTokens = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'status': status,
+    'startedAt': startedAt,
+    'finishedAt': finishedAt,
+    'inputTokens': inputTokens,
+    'outputTokens': outputTokens,
+  };
+  factory AgentRun.fromJson(Map<String, dynamic> j) => AgentRun(
+    id: j['id'],
+    workId: j['workId'],
+    status: j['status'] ?? 'running',
+    startedAt: j['startedAt'] ?? 0,
+    finishedAt: j['finishedAt'],
+    inputTokens: j['inputTokens'] ?? 0,
+    outputTokens: j['outputTokens'] ?? 0,
+  );
+}
+
+class ToolCall {
+  final String id, runId, toolName, inputSummary, resultSummary, status;
+  final int startedAt;
+  const ToolCall({
+    required this.id,
+    required this.runId,
+    required this.toolName,
+    this.inputSummary = '',
+    this.resultSummary = '',
+    this.status = 'started',
+    this.startedAt = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'runId': runId,
+    'toolName': toolName,
+    'inputSummary': inputSummary,
+    'resultSummary': resultSummary,
+    'status': status,
+    'startedAt': startedAt,
+  };
+  factory ToolCall.fromJson(Map<String, dynamic> j) => ToolCall(
+    id: j['id'],
+    runId: j['runId'],
+    toolName: j['toolName'] ?? '',
+    inputSummary: j['inputSummary'] ?? '',
+    resultSummary: j['resultSummary'] ?? '',
+    status: j['status'] ?? 'started',
+    startedAt: j['startedAt'] ?? 0,
+  );
+}
+
+class BlobRec {
+  final String id, workId, kind, mime, sha256, storageKey;
+  final int byteSize;
+  const BlobRec({
+    required this.id,
+    required this.workId,
+    required this.storageKey,
+    required this.kind,
+    this.mime = 'application/octet-stream',
+    this.sha256 = '',
+    this.byteSize = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'kind': kind,
+    'mime': mime,
+    'sha256': sha256,
+    'storageKey': storageKey,
+    'byteSize': byteSize,
+  };
+  factory BlobRec.fromJson(Map<String, dynamic> j) => BlobRec(
+    id: j['id'],
+    workId: j['workId'],
+    storageKey: j['storageKey'],
+    kind: j['kind'] ?? 'text',
+    mime: j['mime'] ?? 'application/octet-stream',
+    sha256: j['sha256'] ?? '',
+    byteSize: j['byteSize'] ?? 0,
+  );
+}
+
+class BundleData {
+  final Work work;
+  final List<Chapter> chapters;
+  final Map<String, String> texts;
+  final List<Anchor> anchors;
+  final List<BlobRec> blobs;
+  final List<Prompt> prompts;
+  final List<Proposal> proposals;
+  final List<AgentRun> runs;
+  final List<ToolCall> toolCalls;
+  const BundleData({
+    required this.work,
+    this.chapters = const [],
+    this.texts = const {},
+    this.anchors = const [],
+    this.blobs = const [],
+    this.prompts = const [],
+    this.proposals = const [],
+    this.runs = const [],
+    this.toolCalls = const [],
+  });
+  Map<String, dynamic> toJson() => {
+    'work': work.toJson(),
+    'chapters': chapters.map((x) => x.toJson()).toList(),
+    'texts': texts,
+    'anchors': anchors.map((x) => x.toJson()).toList(),
+    'blobs': blobs.map((x) => x.toJson()).toList(),
+    'prompts': prompts.map((x) => x.toJson()).toList(),
+    'proposals': proposals.map((x) => x.toJson()).toList(),
+    'runs': runs.map((x) => x.toJson()).toList(),
+    'toolCalls': toolCalls.map((x) => x.toJson()).toList(),
+  };
+}
+
+Map<String, dynamic> decodeMap(String s) =>
+    jsonDecode(s) as Map<String, dynamic>;
+Uint8List utf8Bytes(String s) => Uint8List.fromList(utf8.encode(s));

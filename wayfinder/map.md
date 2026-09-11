@@ -15,6 +15,8 @@ title: 跨端 AI 电子书应用 v1 规格
 
 - **运作模式修订（2026-09-06）**：用户已授权无人值守——所有 HITL 工单由代理按 grilling 轮次中给出的推荐答案直接定夺并记录；每个工单的 Resolution 中须列明采纳的推荐项，供用户事后否决。
 
+- **v2 重建启动（2026-09-11）**：用户决定放弃本图的 TS/Tauri 实现路线，以 Flutter 重建 H5/iOS/Android 并内置客户端 Agent Runtime；新图见 [v2/map.md](v2/map.md)，其决议推翻本图 001 的选型。
+
 - 领域词汇见根目录 [CONTEXT.md](../CONTEXT.md)；处理工单时默认先调 Skill "grilling" + "domain-modeling"（research 工单调 "research"，prototype 工单调 "prototype"）。
 - 本地 Markdown 追踪器约定：地图在本文件；工单在 `wayfinder/tickets/NNN-slug.md`，frontmatter 含 `status: open|closed`、`labels`、`assignee`、`blocked-by: [NNN]`；决议以工单内 `## Resolution` 节记录；前沿 = open、blocked-by 全部 closed 且未 assign 的工单。
 

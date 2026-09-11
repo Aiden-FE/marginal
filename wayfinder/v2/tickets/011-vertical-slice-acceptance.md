@@ -1,0 +1,27 @@
+---
+id: 011
+title: Vertical slice 端到端验收
+labels: [wayfinder:build]
+status: open
+blocked-by: [6, 9, 10]
+---
+
+## Question
+
+跑通 v2 验收链路并完成切换：导入 TXT → 本地书稿 → 长文阅读 → Agent 查询章节 → 提案 → 确认 → 修订 → 断网重开可读（001 工单第 10 条）。
+
+## Scope
+
+- iOS 真机、Android 真机、H5（桌面 + 移动浏览器）三端各跑一遍完整链路。
+- 真实长文（≥1MB TXT）、真实 OpenAI-compatible 供应商、断网冷启动恢复。
+- 通过后执行切换（002 工单第 8、10 条）：删除旧 packages/ 与 src-tauri/，Flutter Web 构建替换 Vercel H5，发布迁移说明（旧浏览器数据不自动迁移）。
+
+## Acceptance
+
+- 三端链路全绿；旧实现删除后仓库仅存 Flutter 应用 + 文档；Vercel 新 H5 可用。
+
+依赖：006、009、010。
+
+## Resolution
+
+实现链路已完成并验证 H5/Android：全量 Flutter 测试 23/23 通过，analyze 零告警，Web release 和 Android debug APK 构建成功；iOS 模拟器构建因 GitHub Swift Package 网络超时失败。旧 packages/、src-tauri/ 尚未删除，Vercel 尚未切换——删除是不可逆操作，且应在 iOS 门通过并得到单独确认后执行。
