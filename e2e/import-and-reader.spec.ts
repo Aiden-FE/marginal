@@ -2,6 +2,51 @@ import { test, expect } from "@playwright/test";
 import { openApp, importSampleBook, waitForToast, showReaderChrome, openReaderFromLibrary } from "./utils";
 
 test.describe("移动端全流程（demo provider，IndexedDB）", () => {
+  test("搜索 Sheet 跟随键盘上移且中央唤起热区足够大", async ({ page }) => {
+    await page.addInitScript(() => {
+      const listeners: Record<string, EventListener[]> = {};
+      const stub = {
+        height: 844,
+        width: 390,
+        offsetTop: 0,
+        offsetLeft: 0,
+        scale: 1,
+        addEventListener(type: string, listener: EventListener) { (listeners[type] ??= []).push(listener); },
+        removeEventListener(type: string, listener: EventListener) {
+          listeners[type] = (listeners[type] ?? []).filter((item) => item !== listener);
+        },
+      };
+      Object.defineProperty(window, "visualViewport", { configurable: true, get: () => stub });
+      (window as unknown as { __setVisualViewportHeight: (height: number) => void }).__setVisualViewportHeight = (height) => {
+        stub.height = height;
+        for (const listener of listeners.resize ?? []) listener.call(stub, new Event("resize"));
+      };
+    });
+    await openApp(page);
+    await importSampleBook(page);
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await waitForToast(page, "已导入");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+
+    const toggle = await page.locator(".m-reader-tap-toggle").boundingBox();
+    expect(toggle && toggle.width).toBeGreaterThanOrEqual(220);
+    expect(toggle && toggle.height).toBeGreaterThanOrEqual(180);
+
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "更多操作" }).click();
+    await page.getByRole("button", { name: "全书搜索" }).click({ force: true });
+    const dialog = page.getByRole("dialog", { name: "全书搜索" });
+    await expect(dialog).toBeVisible();
+    await page.evaluate(() => (window as unknown as { __setVisualViewportHeight: (height: number) => void }).__setVisualViewportHeight(420));
+    await expect.poll(async () => {
+      const box = await dialog.boundingBox();
+      return box ? Math.round(box.y + box.height) : 9999;
+    }).toBeLessThanOrEqual(440);
+    const input = await page.getByLabel("搜索关键词").boundingBox();
+    expect(input).not.toBeNull();
+    expect(input!.y + input!.height).toBeLessThanOrEqual(440);
+  });
+
   test("删除书稿后从最近书稿永久移除", async ({ page }) => {
     await openApp(page);
     await importSampleBook(page);

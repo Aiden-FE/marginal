@@ -1,8 +1,43 @@
 // 移动端共享小组件：底部 sheet / action sheet / blob 图片 / 迷你队列进度条。
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { store, useStore } from "../store";
 import { queueProgress } from "./logic";
+
+interface VisualViewportBox { height: number; top: number }
+
+/** 键盘/浏览器输入栏弹出时 visual viewport 缩小；Sheet 需贴它的底而非 layout viewport 的底。 */
+function useVisualViewportBox(): VisualViewportBox | null {
+  const [box, setBox] = useState<VisualViewportBox | null>(() => {
+    const viewport = window.visualViewport;
+    return viewport ? { height: viewport.height, top: viewport.offsetTop } : null;
+  });
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => {
+      setBox((current) => {
+        if (current && current.height === viewport.height && current.top === viewport.offsetTop) return current;
+        return { height: viewport.height, top: viewport.offsetTop };
+      });
+    };
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, []);
+  return box;
+}
+
+function sheetMaskStyle(box: VisualViewportBox | null): CSSProperties | undefined {
+  return box ? { height: box.height, top: box.top } : undefined;
+}
+
+function sheetStyle(box: VisualViewportBox | null): CSSProperties | undefined {
+  return box ? { maxHeight: box.height } : undefined;
+}
 
 export function BottomSheet({
   title,
@@ -13,9 +48,10 @@ export function BottomSheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const viewportBox = useVisualViewportBox();
   return (
-    <div className="m-sheet-mask" onClick={onClose}>
-      <div className="m-sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+    <div className="m-sheet-mask" style={sheetMaskStyle(viewportBox)} onClick={onClose}>
+      <div className="m-sheet" role="dialog" aria-label={title} style={sheetStyle(viewportBox)} onClick={(e) => e.stopPropagation()}>
         <div className="m-sheet-grip" />
         <div className="m-sheet-head">
           <span className="m-sheet-title">{title}</span>
