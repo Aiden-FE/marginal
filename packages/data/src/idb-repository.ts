@@ -73,7 +73,9 @@ export class IdbRepository implements Repository {
         tx.objectStore("chapters").delete(c.id);
         tx.objectStore("texts").delete(c.id);
       }
-      for (const store of ["works", "runs", "revisions", "cards", "illustrations", "anchors", "blobs"] as const) {
+      // Work 自身只有 id，没有 workId；必须直接按主键删除。
+      tx.objectStore("works").delete(id);
+      for (const store of ["runs", "revisions", "cards", "illustrations", "anchors", "blobs"] as const) {
         const all: { id: string; workId: string; storageKey?: string }[] = await this.req(tx.objectStore(store).getAll());
         for (const item of all.filter((x) => x.workId === id)) {
           tx.objectStore(store).delete(item.id);

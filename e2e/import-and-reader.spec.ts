@@ -2,6 +2,28 @@ import { test, expect } from "@playwright/test";
 import { openApp, importSampleBook, waitForToast, showReaderChrome, openReaderFromLibrary } from "./utils";
 
 test.describe("移动端全流程（demo provider，IndexedDB）", () => {
+  test("删除书稿后从最近书稿永久移除", async ({ page }) => {
+    await openApp(page);
+    await importSampleBook(page);
+    await page.getByRole("button", { name: /确认导入 .* 章/ }).click();
+    await waitForToast(page, "已导入");
+    await expect(page.locator(".m-reader-title")).toBeVisible({ timeout: 10_000 });
+    await showReaderChrome(page);
+    await page.getByRole("button", { name: "返回书架" }).click();
+    await expect(page.locator(".m-book-card")).toHaveCount(1);
+
+    await page.getByRole("button", { name: /^管理《/ }).click();
+    await page.getByRole("button", { name: "删除书稿" }).click();
+    await page.getByRole("button", { name: "确认删除" }).click();
+    await expect(page.locator(".m-book-card")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText("书架还是空的")).toBeVisible();
+
+    // 重新加载后仍然不存在，防止仅从内存列表临时移除
+    await page.reload();
+    await page.waitForSelector("h1", { timeout: 15_000 });
+    await expect(page.locator(".m-book-card")).toHaveCount(0);
+  });
+
   test("导入 Loading 与移动布局：解析/入库有过渡且按钮不遮挡", async ({ page }) => {
     await openApp(page);
     const heroCopy = page.locator(".m-hero-card p");
