@@ -1,19 +1,11 @@
 {
   "name": "marginal",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
   "packageManager": "pnpm@11.15.1",
   "scripts": {
-    "dev": "pnpm --filter @marginal/app dev",
-    "dev:lan": "pnpm --filter @marginal/app dev:lan",
-    "test": "pnpm -r --if-present test",
-    "test:e2e": "playwright test",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "proxy": "node tools/proxy.mjs"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "@tauri-apps/cli": "^2.11.4"
+    "build:web": "cd apps/marginal && flutter build web --release --no-wasm-dry-run && rm -rf web-dist && cp -R build/web web-dist",
+    "test:flutter": "cd apps/marginal && flutter test",
+    "analyze:flutter": "cd apps/marginal && flutter analyze"
   }
 }

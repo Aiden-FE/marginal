@@ -1,0 +1,6 @@
+github "Flipboard/FLAnimatedImage" "1.0.14"
+github "SDWebImage/SDWebImage" "5.8.0"
+github "SDWebImage/SDWebImageFLPlugin" "0.4.0"
+github "TimOliver/TOCropViewController" "2.5.2"
+github "zhangao0086/DKCamera" "1.6.7"
+github "zhangao0086/DKPhotoGallery" "0.0.16"
