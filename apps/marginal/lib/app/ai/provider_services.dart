@@ -24,7 +24,22 @@ class ProviderEntityExtractionService implements EntityExtractionService {
     required String chapterId,
   }) async {
     final text = await repository.getChapterText(chapterId);
-    if (provider.id == 'demo') return const [];
+    if (provider.id == 'demo') {
+      final name =
+          RegExp(r'[\u4e00-\u9fff]{2,4}').firstMatch(text)?.group(0) ?? '主角';
+      return [
+        ExtractedEntity(
+          kind: EntityKind.character,
+          name: name,
+          attributes: const {'来源': '内置演示提取'},
+        ),
+        const ExtractedEntity(
+          kind: EntityKind.scene,
+          name: '章节场景',
+          attributes: {'说明': '配置供应商后可获得真实提取结果'},
+        ),
+      ];
+    }
     final transport = OpenAICompatibleTransport(
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
