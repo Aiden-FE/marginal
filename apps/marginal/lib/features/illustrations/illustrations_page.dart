@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../app/ai/ai_services.dart';
+import '../../app/paragraphs.dart' as app_split;
 import '../../app/ids.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/platform_services.dart';
@@ -10,10 +11,7 @@ import '../../core/repository.dart';
 import '../../core/types.dart';
 
 /// 按空行切分段落（与阅读投影一致的简单规则）。
-List<String> splitParagraphs(String text) => [
-  for (final p in text.split(RegExp(r'\n\s*\n')))
-    if (p.trim().isNotEmpty) p.trim(),
-];
+List<String> splitParagraphs(String text) => app_split.splitParagraphs(text);
 
 /// 摘要：压平空白并截断到 maxChars。
 String summarizeText(String text, {int maxChars = 500}) {

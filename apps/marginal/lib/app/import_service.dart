@@ -10,6 +10,7 @@ import '../core/repository.dart';
 import '../core/split.dart';
 import '../core/types.dart';
 import 'ids.dart';
+import 'paragraphs.dart';
 
 class PickedInput {
   const PickedInput(this.name, this.bytes);
@@ -73,10 +74,8 @@ class ImportService {
     stage(ImportStages.writing);
     await repository.putWork(work);
     for (var i = 0; i < proposed.length; i++) {
-      final body = sliceChapterText(
-        text,
-        proposed[i].startLine,
-        proposed[i].endLine,
+      final body = normalizeChapterText(
+        sliceChapterText(text, proposed[i].startLine, proposed[i].endLine),
       );
       final chapter = Chapter(
         id: newId('chapter'),

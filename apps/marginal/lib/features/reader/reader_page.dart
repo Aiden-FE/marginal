@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/reading_prefs.dart' as prefs;
 import '../../app/reader_projection.dart';
+import '../../app/paragraphs.dart';
 import '../../app/share.dart';
 import '../../app/platform_services.dart';
 import '../../core/types.dart';
@@ -75,6 +76,7 @@ class _ReaderPageState extends State<ReaderPage> {
   Map<int, Uint8List> _images = {};
   int _index = 0;
   bool _loading = true;
+  double _liveRatio = 0;
   late final Map<String, dynamic> _settings = Map<String, dynamic>.of(
     widget.work.settings,
   );
@@ -224,11 +226,7 @@ class _ReaderPageState extends State<ReaderPage> {
     await _open(_chapters, index);
   }
 
-  List<String> _splitParagraphs(String value) => value
-      .split(RegExp(r'\n\s*\n'))
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
+  List<String> _splitParagraphs(String value) => splitParagraphs(value);
 
   // ---- 设置持久化 ----
 
@@ -300,6 +298,18 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _onScroll() {
     if (_chromeVisible && !_autoRunning) _bumpChrome();
+    if (_scrollController.hasClients) {
+      final p = _scrollController.position;
+      final live = prefs.scrollRatio(
+        _scrollController.offset,
+        p.maxScrollExtent + p.viewportDimension,
+        p.viewportDimension,
+      );
+      if ((live - _liveRatio).abs() >= 0.005) {
+        _liveRatio = live;
+        if (mounted) setState(() {});
+      }
+    }
     _schedulePositionSave();
   }
 
@@ -732,6 +742,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Widget _buildTopChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
+    final bookmarked = _isBookmarked(_currentChapter!.id);
     return Positioned(
       key: const Key('reader-top-chrome'),
       top: 0,
@@ -769,6 +780,15 @@ class _ReaderPageState extends State<ReaderPage> {
                           color: foreground,
                         ),
                       ),
+                    ),
+                    IconButton(
+                      key: const Key('reader-chapter-favorite'),
+                      tooltip: bookmarked ? '取消收藏本章' : '收藏本章',
+                      icon: Icon(
+                        bookmarked ? Icons.bookmark : Icons.bookmark_border,
+                        color: bookmarked ? palette.accent : foreground,
+                      ),
+                      onPressed: _toggleChapterBookmark,
                     ),
                     IconButton(
                       tooltip: '段落收藏',
@@ -830,7 +850,8 @@ class _ReaderPageState extends State<ReaderPage> {
                     ),
                     Expanded(
                       child: Text(
-                        '第 ${_index + 1}/${_chapters.length} 章',
+                        '第 ${_index + 1}/${_chapters.length} 章 · '
+                        '${(_liveRatio * 100).round()}%',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: foreground),
                       ),

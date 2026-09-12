@@ -69,11 +69,11 @@ void main() {
   testWidgets('底栏章节导航并记录当前章', (tester) async {
     final services = await seed();
     await pumpReader(tester, services);
-    expect(find.text('第 1/2 章'), findsOneWidget);
+    expect(find.textContaining('第 1/2 章'), findsOneWidget);
 
     await tester.tap(find.byTooltip('下一章'));
     await tester.pumpAndSettle();
-    expect(find.text('第 2/2 章'), findsOneWidget);
+    expect(find.textContaining('第 2/2 章'), findsOneWidget);
     expect(find.text('第三段。'), findsOneWidget);
 
     final saved = await services.repository.getWork('w');
@@ -88,7 +88,7 @@ void main() {
     await tester.pumpAndSettle();
     var saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), hasLength(1));
-    expect(find.byIcon(Icons.bookmark), findsOneWidget);
+    expect(find.byIcon(Icons.bookmark), findsAtLeastNWidgets(1));
 
     await afterSnackBar(tester);
     await tester.tap(find.byTooltip('取消收藏章节'));
@@ -163,7 +163,7 @@ void main() {
     await tester.tap(find.byTooltip('自动阅读'));
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
-    expect(find.text('第 2/2 章'), findsOneWidget);
+    expect(find.textContaining('第 2/2 章'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 2));
     expect(find.textContaining('最后一章'), findsOneWidget);
@@ -181,7 +181,7 @@ void main() {
     await pumpReader(tester, services, settings: seedSettings);
 
     expect(
-      find.text('第 1/2 章'),
+      find.textContaining('第 1/2 章'),
       findsOneWidget,
       reason: '按 reading.chapterId 定位章节',
     );
@@ -227,7 +227,7 @@ void main() {
 
     await tester.tap(find.text('第三段。'));
     await tester.pumpAndSettle();
-    expect(find.text('第 2/2 章'), findsOneWidget, reason: '跳转到收藏所在章节');
+    expect(find.textContaining('第 2/2 章'), findsOneWidget, reason: '跳转到收藏所在章节');
     await settleQuietly(tester);
   });
 
