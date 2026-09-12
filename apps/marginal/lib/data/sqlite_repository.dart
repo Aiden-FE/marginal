@@ -49,6 +49,12 @@ class SqliteRepository implements Repository {
     db.execute(
       'CREATE TABLE IF NOT EXISTS blobs(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, storage_key TEXT NOT NULL, json TEXT NOT NULL, data BLOB NOT NULL)',
     );
+    db.execute(
+      'CREATE TABLE IF NOT EXISTS entity_cards(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
+    );
+    db.execute(
+      'CREATE TABLE IF NOT EXISTS illustrations(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
+    );
   }
 
   @override
@@ -96,6 +102,8 @@ class SqliteRepository implements Repository {
       'prompts',
       'proposals',
       'revisions',
+      'entity_cards',
+      'illustrations',
       'agent_runs',
       'blobs',
     ]) {
@@ -238,6 +246,60 @@ class SqliteRepository implements Repository {
   );
 
   @override
+  Future<List<EntityCard>> listEntityCards(String workId) =>
+      _list('entity_cards', workId, (s) => EntityCard.fromJson(_dec(s)));
+  @override
+  Future<void> putEntityCard(EntityCard value) async => db.execute(
+    'INSERT INTO entity_cards(id,work_id,json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET work_id=excluded.work_id,json=excluded.json',
+    [value.id, value.workId, _enc(value.toJson())],
+  );
+  @override
+  Future<void> deleteEntityCard(String id) async {
+    db.execute('BEGIN');
+    try {
+      db.execute('DELETE FROM entity_cards WHERE id=?', [id]);
+      final rows = db.select('SELECT json FROM illustrations');
+      for (final row in rows) {
+        final illustration = Illustration.fromJson(_dec(row['json'] as String));
+        if (!illustration.entityCardIds.contains(id)) continue;
+        await putIllustration(
+          Illustration(
+            id: illustration.id,
+            workId: illustration.workId,
+            prompt: illustration.prompt,
+            providerId: illustration.providerId,
+            model: illustration.model,
+            blobId: illustration.blobId,
+            chapterId: illustration.chapterId,
+            paraIndex: illustration.paraIndex,
+            status: illustration.status,
+            entityCardIds: illustration.entityCardIds
+                .where((x) => x != id)
+                .toList(),
+            createdAt: illustration.createdAt,
+          ),
+        );
+      }
+      db.execute('COMMIT');
+    } catch (_) {
+      db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<Illustration>> listIllustrations(String workId) =>
+      _list('illustrations', workId, (s) => Illustration.fromJson(_dec(s)));
+  @override
+  Future<void> putIllustration(Illustration value) async => db.execute(
+    'INSERT INTO illustrations(id,work_id,json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET work_id=excluded.work_id,json=excluded.json',
+    [value.id, value.workId, _enc(value.toJson())],
+  );
+  @override
+  Future<void> deleteIllustration(String id) async =>
+      db.execute('DELETE FROM illustrations WHERE id=?', [id]);
+
+  @override
   Future<List<AgentRun>> listAgentRuns(String workId) =>
       _list('agent_runs', workId, (s) => AgentRun.fromJson(_dec(s)));
   @override
@@ -290,6 +352,8 @@ class SqliteRepository implements Repository {
       prompts: await listPrompts(workId),
       proposals: await listProposals(workId),
       revisions: await listRevisions(workId),
+      entityCards: await listEntityCards(workId),
+      illustrations: await listIllustrations(workId),
       runs: runs,
       toolCalls: [for (final r in runs) ...await listToolCalls(r.id)],
     );
@@ -321,6 +385,12 @@ class SqliteRepository implements Repository {
       for (final r in payload.revisions) {
         await putRevision(r);
       }
+      for (final c in payload.entityCards) {
+        await putEntityCard(c);
+      }
+      for (final i in payload.illustrations) {
+        await putIllustration(i);
+      }
       for (final r in payload.runs) {
         await putAgentRun(r);
       }
@@ -346,6 +416,8 @@ class SqliteRepository implements Repository {
         'agent_runs',
         'proposals',
         'revisions',
+        'entity_cards',
+        'illustrations',
         'prompts',
         'anchors',
         'chapters',

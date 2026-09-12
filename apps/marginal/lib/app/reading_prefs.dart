@@ -3,13 +3,13 @@
 /// 语义移植自 v1 `mobile/logic.ts`，全部可单测。
 library;
 
-
 const double minFontSize = 14;
 const double maxFontSize = 30;
 const double defaultFontSize = 19;
 
-double clampFontSize(num value) =>
-    value.isNaN ? defaultFontSize : value.toDouble().clamp(minFontSize, maxFontSize);
+double clampFontSize(num value) => value.isNaN
+    ? defaultFontSize
+    : value.toDouble().clamp(minFontSize, maxFontSize);
 
 const int minAutoSpeed = 20;
 const int maxAutoSpeed = 180;
@@ -54,14 +54,21 @@ bool isWorkFinished({
   double threshold = 0.98,
 }) {
   if (positionChapterId == null || chapterIdsInOrder.isEmpty) return false;
-  return chapterIdsInOrder.last == positionChapterId && positionRatio >= threshold;
+  return chapterIdsInOrder.last == positionChapterId &&
+      positionRatio >= threshold;
 }
 
-String workGroupLabel(String raw) => raw.trim().substring(0, raw.trim().length.clamp(0, 30));
+String workGroupLabel(String raw) =>
+    raw.trim().substring(0, raw.trim().length.clamp(0, 30));
 
 List<String> workGroupNames(Iterable<String> groups) {
-  final names = groups.where((g) => g.trim().isNotEmpty).map((g) => g.trim()).toSet().toList()
-    ..sort((a, b) => a.compareTo(b));
+  final names =
+      groups
+          .where((g) => g.trim().isNotEmpty)
+          .map((g) => g.trim())
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.compareTo(b));
   return names;
 }
 
@@ -82,13 +89,14 @@ class ParagraphFavorite {
     'text': text,
     'savedAt': savedAt,
   };
-  factory ParagraphFavorite.fromJson(Map<String, dynamic> j) => ParagraphFavorite(
-    chapterId: j['chapterId'] as String? ?? '',
-    chapterTitle: j['chapterTitle'] as String? ?? '',
-    paraIndex: (j['paraIndex'] as num?)?.toInt() ?? 0,
-    text: j['text'] as String? ?? '',
-    savedAt: j['savedAt'] as int? ?? 0,
-  );
+  factory ParagraphFavorite.fromJson(Map<String, dynamic> j) =>
+      ParagraphFavorite(
+        chapterId: j['chapterId'] as String? ?? '',
+        chapterTitle: j['chapterTitle'] as String? ?? '',
+        paraIndex: (j['paraIndex'] as num?)?.toInt() ?? 0,
+        text: j['text'] as String? ?? '',
+        savedAt: j['savedAt'] as int? ?? 0,
+      );
 }
 
 class ChapterBookmark {
@@ -99,7 +107,11 @@ class ChapterBookmark {
     required this.chapterTitle,
     required this.addedAt,
   });
-  Map<String, dynamic> toJson() => {'chapterId': chapterId, 'chapterTitle': chapterTitle, 'addedAt': addedAt};
+  Map<String, dynamic> toJson() => {
+    'chapterId': chapterId,
+    'chapterTitle': chapterTitle,
+    'addedAt': addedAt,
+  };
   factory ChapterBookmark.fromJson(Map<String, dynamic> j) => ChapterBookmark(
     chapterId: j['chapterId'] as String? ?? '',
     chapterTitle: j['chapterTitle'] as String? ?? '',
@@ -108,10 +120,12 @@ class ChapterBookmark {
 }
 
 /// 基于 Work.settings JSON 的收藏/书签存取（跨端持久化，替代 v1 localStorage）。
-List<ParagraphFavorite> listParagraphFavorites(Map<String, dynamic> settings, String workId) =>
-    ((settings['favorites.$workId'] as List?) ?? const [])
-        .map((e) => ParagraphFavorite.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
+List<ParagraphFavorite> listParagraphFavorites(
+  Map<String, dynamic> settings,
+  String workId,
+) => ((settings['favorites.$workId'] as List?) ?? const [])
+    .map((e) => ParagraphFavorite.fromJson(Map<String, dynamic>.from(e as Map)))
+    .toList();
 
 ({List<ParagraphFavorite> favorites, bool added}) toggleParagraphFavorite(
   Map<String, dynamic> settings,
@@ -120,7 +134,9 @@ List<ParagraphFavorite> listParagraphFavorites(Map<String, dynamic> settings, St
 ) {
   final favorites = listParagraphFavorites(settings, workId);
   final index = favorites.indexWhere(
-    (item) => item.chapterId == favorite.chapterId && item.paraIndex == favorite.paraIndex,
+    (item) =>
+        item.chapterId == favorite.chapterId &&
+        item.paraIndex == favorite.paraIndex,
   );
   var added = false;
   if (index >= 0) {
@@ -133,10 +149,12 @@ List<ParagraphFavorite> listParagraphFavorites(Map<String, dynamic> settings, St
   return (favorites: favorites, added: added);
 }
 
-List<ChapterBookmark> listChapterBookmarks(Map<String, dynamic> settings, String workId) =>
-    ((settings['bookmarks.$workId'] as List?) ?? const [])
-        .map((e) => ChapterBookmark.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
+List<ChapterBookmark> listChapterBookmarks(
+  Map<String, dynamic> settings,
+  String workId,
+) => ((settings['bookmarks.$workId'] as List?) ?? const [])
+    .map((e) => ChapterBookmark.fromJson(Map<String, dynamic>.from(e as Map)))
+    .toList();
 
 ({List<ChapterBookmark> bookmarks, bool added}) toggleChapterBookmark(
   Map<String, dynamic> settings,
@@ -150,14 +168,23 @@ List<ChapterBookmark> listChapterBookmarks(Map<String, dynamic> settings, String
   if (index >= 0) {
     bookmarks.removeAt(index);
   } else {
-    bookmarks.insert(0, ChapterBookmark(chapterId: chapterId, chapterTitle: chapterTitle, addedAt: DateTime.now().millisecondsSinceEpoch));
+    bookmarks.insert(
+      0,
+      ChapterBookmark(
+        chapterId: chapterId,
+        chapterTitle: chapterTitle,
+        addedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
     added = true;
   }
   settings['bookmarks.$workId'] = bookmarks.map((e) => e.toJson()).toList();
   return (bookmarks: bookmarks, added: added);
 }
 
-({String chapterId, double ratio})? loadReadingPosition(Map<String, dynamic> settings) {
+({String chapterId, double ratio})? loadReadingPosition(
+  Map<String, dynamic> settings,
+) {
   final raw = settings['reading'];
   if (raw is! Map) return null;
   final chapterId = raw['chapterId'];
@@ -166,6 +193,10 @@ List<ChapterBookmark> listChapterBookmarks(Map<String, dynamic> settings, String
   return (chapterId: chapterId, ratio: clampRatio(ratio));
 }
 
-void saveReadingPosition(Map<String, dynamic> settings, String chapterId, double ratio) {
+void saveReadingPosition(
+  Map<String, dynamic> settings,
+  String chapterId,
+  double ratio,
+) {
   settings['reading'] = {'chapterId': chapterId, 'ratio': clampRatio(ratio)};
 }

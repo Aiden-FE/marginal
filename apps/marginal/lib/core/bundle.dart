@@ -80,6 +80,12 @@ Uint8List buildBundle(
     revisions: (j['revisions'] as List? ?? [])
         .map((x) => Revision.fromJson(Map<String, dynamic>.from(x)))
         .toList(),
+    entityCards: (j['entityCards'] as List? ?? [])
+        .map((x) => EntityCard.fromJson(Map<String, dynamic>.from(x)))
+        .toList(),
+    illustrations: (j['illustrations'] as List? ?? [])
+        .map((x) => Illustration.fromJson(Map<String, dynamic>.from(x)))
+        .toList(),
   );
   return (
     data: d,
@@ -97,6 +103,8 @@ BundleData reidForCopy(BundleData d) {
   final rm = {for (final r in d.runs) r.id: '$workId-${r.id}'};
   final bm = {for (final b in d.blobs) b.id: '$workId-${b.id}'};
   final pm = {for (final p in d.prompts) p.id: '$workId-${p.id}'};
+  final em = {for (final e in d.entityCards) e.id: '$workId-${e.id}'};
+  final im = {for (final i in d.illustrations) i.id: '$workId-${i.id}'};
   final propm = {for (final p in d.proposals) p.id: '$workId-${p.id}'};
   return BundleData(
     work: Work(
@@ -127,11 +135,45 @@ BundleData reidForCopy(BundleData d) {
             id: '$workId-${a.id}',
             workId: workId,
             chapterId: cm[a.chapterId] ?? a.chapterId,
-            targetId: bm[a.targetId] ?? a.targetId,
+            targetId: bm[a.targetId] ?? im[a.targetId] ?? a.targetId,
             paraIndex: a.paraIndex,
             charOffset: a.charOffset,
             targetType: a.targetType,
             state: a.state,
+          ),
+        )
+        .toList(),
+    entityCards: d.entityCards
+        .map(
+          (e) => EntityCard(
+            id: em[e.id]!,
+            workId: workId,
+            name: e.name,
+            kind: e.kind,
+            aliases: e.aliases,
+            attributes: e.attributes,
+            status: e.status,
+            portraitBlobId: e.portraitBlobId == null
+                ? null
+                : (bm[e.portraitBlobId] ?? e.portraitBlobId),
+            createdAt: e.createdAt,
+          ),
+        )
+        .toList(),
+    illustrations: d.illustrations
+        .map(
+          (i) => Illustration(
+            id: im[i.id]!,
+            workId: workId,
+            prompt: i.prompt,
+            providerId: i.providerId,
+            model: i.model,
+            blobId: bm[i.blobId] ?? i.blobId,
+            chapterId: cm[i.chapterId] ?? i.chapterId,
+            paraIndex: i.paraIndex,
+            status: i.status,
+            entityCardIds: i.entityCardIds.map((x) => em[x] ?? x).toList(),
+            createdAt: i.createdAt,
           ),
         )
         .toList(),

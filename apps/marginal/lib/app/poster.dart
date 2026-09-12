@@ -3,7 +3,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 /// 段落海报 —— 视觉移植自 v1 `poster.ts`（900 宽暖纸渐变 + 双环装饰 + 衬线正文）。
-List<String> wrapPosterText(String text, {int maxUnits = 20, int maxLines = 18}) {
+List<String> wrapPosterText(
+  String text, {
+  int maxUnits = 20,
+  int maxLines = 18,
+}) {
   final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (normalized.isEmpty) return const [];
   final lines = <String>[];
@@ -51,11 +55,10 @@ class ParagraphPosterPainter extends CustomPainter {
     canvas.scale(rect.width / width, rect.height / height);
 
     final background = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        Offset(0, height),
-        [const Color(0xFFF7F0DF), const Color(0xFFE9DCC2)],
-      );
+      ..shader = ui.Gradient.linear(Offset.zero, Offset(0, height), [
+        const Color(0xFFF7F0DF),
+        const Color(0xFFE9DCC2),
+      ]);
     canvas.drawRect(Offset.zero & Size(width, height), background);
 
     final ring = Paint()
@@ -81,7 +84,11 @@ class ParagraphPosterPainter extends CustomPainter {
     );
     text_('MARGINAL READING', const Offset(78, 92), brand);
 
-    const label = TextStyle(color: Color(0xFF8A6A3C), fontSize: 20, letterSpacing: 2);
+    const label = TextStyle(
+      color: Color(0xFF8A6A3C),
+      fontSize: 20,
+      letterSpacing: 2,
+    );
     text_(workTitle, const Offset(78, 190), label);
     const chapterStyle = TextStyle(
       color: Color(0xFF3A332A),
@@ -102,11 +109,17 @@ class ParagraphPosterPainter extends CustomPainter {
       y += 62;
     }
 
-    const footer = TextStyle(color: Color(0xFF8A6A3C), fontSize: 18, letterSpacing: 1.5);
+    const footer = TextStyle(
+      color: Color(0xFF8A6A3C),
+      fontSize: 18,
+      letterSpacing: 1.5,
+    );
     text_('— Marginal 阅读摘录 —', Offset(78, height - 90), footer);
   }
 
   @override
   bool shouldRepaint(covariant ParagraphPosterPainter old) =>
-      old.workTitle != workTitle || old.chapterTitle != chapterTitle || old.text != text;
+      old.workTitle != workTitle ||
+      old.chapterTitle != chapterTitle ||
+      old.text != text;
 }

@@ -11,6 +11,5 @@ class ReaderPalette {
   final Color background, foreground, chrome, accent;
 }
 
-
 /// 阅读主题：纸 / 护眼 / 夜间（与 v1 一致）。
 enum ReaderTheme { paper, eyecare, dark }

@@ -2,6 +2,7 @@
 ///
 /// UI 只依赖这些接口；真实实现走用户配置的 Provider，测试用 Demo/fake。
 library;
+
 import '../../core/types.dart';
 
 /// 一条待写入的实体卡草稿。
@@ -20,7 +21,10 @@ class ExtractedEntity {
 
 /// 实体提取：从章节正文提取实体卡草稿（去重合并由调用方处理）。
 abstract interface class EntityExtractionService {
-  Future<List<ExtractedEntity>> extract({required String workId, required String chapterId});
+  Future<List<ExtractedEntity>> extract({
+    required String workId,
+    required String chapterId,
+  });
 }
 
 /// 插图生成：按提示词生成图片并落为 blob，返回 blobId。

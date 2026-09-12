@@ -41,6 +41,16 @@ mixin SnapshotPersistence on MemoryRepository {
           Prompt.fromJson(Map<String, dynamic>.from(raw as Map)),
         );
       }
+      for (final raw in (root['entityCards'] as List? ?? const [])) {
+        await super.putEntityCard(
+          EntityCard.fromJson(Map<String, dynamic>.from(raw as Map)),
+        );
+      }
+      for (final raw in (root['illustrations'] as List? ?? const [])) {
+        await super.putIllustration(
+          Illustration.fromJson(Map<String, dynamic>.from(raw as Map)),
+        );
+      }
       for (final raw in (root['proposals'] as List? ?? const [])) {
         await super.putProposal(
           Proposal.fromJson(Map<String, dynamic>.from(raw as Map)),
@@ -85,6 +95,8 @@ mixin SnapshotPersistence on MemoryRepository {
     final anchors = <Anchor>[];
     final prompts = <Prompt>[];
     final proposals = <Proposal>[];
+    final entityCards = <EntityCard>[];
+    final illustrations = <Illustration>[];
     final revisions = <Revision>[];
     final runs = <AgentRun>[];
     final calls = <ToolCall>[];
@@ -99,6 +111,8 @@ mixin SnapshotPersistence on MemoryRepository {
       anchors.addAll(await listAnchors(work.id));
       prompts.addAll(await listPrompts(work.id));
       proposals.addAll(await listProposals(work.id));
+      entityCards.addAll(await listEntityCards(work.id));
+      illustrations.addAll(await listIllustrations(work.id));
       revisions.addAll(await listRevisions(work.id));
       final workRuns = await listAgentRuns(work.id);
       runs.addAll(workRuns);
@@ -120,6 +134,8 @@ mixin SnapshotPersistence on MemoryRepository {
       'anchors': anchors.map((x) => x.toJson()).toList(),
       'prompts': prompts.map((x) => x.toJson()).toList(),
       'proposals': proposals.map((x) => x.toJson()).toList(),
+      'entityCards': entityCards.map((x) => x.toJson()).toList(),
+      'illustrations': illustrations.map((x) => x.toJson()).toList(),
       'revisions': revisions.map((x) => x.toJson()).toList(),
       'runs': runs.map((x) => x.toJson()).toList(),
       'toolCalls': calls.map((x) => x.toJson()).toList(),
@@ -161,6 +177,18 @@ mixin SnapshotPersistence on MemoryRepository {
   @override
   Future<void> putPrompt(Prompt value) =>
       _persistAfter(() => super.putPrompt(value));
+  @override
+  Future<void> putEntityCard(EntityCard value) =>
+      _persistAfter(() => super.putEntityCard(value));
+  @override
+  Future<void> deleteEntityCard(String id) =>
+      _persistAfter(() => super.deleteEntityCard(id));
+  @override
+  Future<void> putIllustration(Illustration value) =>
+      _persistAfter(() => super.putIllustration(value));
+  @override
+  Future<void> deleteIllustration(String id) =>
+      _persistAfter(() => super.deleteIllustration(id));
   @override
   Future<void> putProposal(Proposal value) =>
       _persistAfter(() => super.putProposal(value));

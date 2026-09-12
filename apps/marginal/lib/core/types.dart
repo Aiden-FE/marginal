@@ -395,7 +395,9 @@ class EntityCard {
     workId: j['workId'],
     kind: parseEntityKind(j['kind'] as String? ?? 'character'),
     name: j['name'] ?? '',
-    aliases: (j['aliases'] as List? ?? const []).map((e) => e as String).toList(),
+    aliases: (j['aliases'] as List? ?? const [])
+        .map((e) => e as String)
+        .toList(),
     attributes: Map<String, String>.from(j['attributes'] as Map? ?? {}),
     status: j['status'] ?? 'draft',
     portraitBlobId: j['portraitBlobId'] as String?,
@@ -445,7 +447,9 @@ class Illustration {
     chapterId: j['chapterId'] ?? '',
     paraIndex: j['paraIndex'] as int?,
     status: j['status'] ?? 'draft',
-    entityCardIds: (j['entityCardIds'] as List? ?? const []).map((e) => e as String).toList(),
+    entityCardIds: (j['entityCardIds'] as List? ?? const [])
+        .map((e) => e as String)
+        .toList(),
     createdAt: j['createdAt'] ?? 0,
   );
 }

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../features/reader/reader_theme.dart';
 
-
-
 /// Marginal 视觉语言 —— 移植 v1 mobile.css 的暖纸书卷气质。
 abstract final class MarginalColors {
   static const bg = Color(0xFFF5F1E8);
@@ -20,26 +18,27 @@ abstract final class MarginalColors {
   static const nightSurface = Color(0xFF1F201D);
   static const nightInk = Color(0xFFD1C9B9);
 
-  static ReaderPalette palette(ReaderTheme theme, Brightness brightness) => switch (theme) {
-    ReaderTheme.paper => ReaderPalette(
-      background: bg,
-      foreground: ink,
-      chrome: const Color(0xE0F5F1E8),
-      accent: accent,
-    ),
-    ReaderTheme.eyecare => const ReaderPalette(
-      background: Color(0xFFCFE3D2),
-      foreground: Color(0xFF2F3D33),
-      chrome: Color(0xE01F2C22),
-      accent: Color(0xFFAD7835),
-    ),
-    ReaderTheme.dark => ReaderPalette(
-      background: nightBg,
-      foreground: nightInk,
-      chrome: const Color(0xE621221F),
-      accent: const Color(0xFFD9A13C),
-    ),
-  };
+  static ReaderPalette palette(ReaderTheme theme, Brightness brightness) =>
+      switch (theme) {
+        ReaderTheme.paper => ReaderPalette(
+          background: bg,
+          foreground: ink,
+          chrome: const Color(0xE0F5F1E8),
+          accent: accent,
+        ),
+        ReaderTheme.eyecare => const ReaderPalette(
+          background: Color(0xFFCFE3D2),
+          foreground: Color(0xFF2F3D33),
+          chrome: Color(0xE01F2C22),
+          accent: Color(0xFFAD7835),
+        ),
+        ReaderTheme.dark => ReaderPalette(
+          background: nightBg,
+          foreground: nightInk,
+          chrome: const Color(0xE621221F),
+          accent: const Color(0xFFD9A13C),
+        ),
+      };
 }
 
 class ReaderPalette {
@@ -67,13 +66,19 @@ class MarginalTheme {
       seedColor: MarginalColors.accent,
       brightness: brightness,
       surface: isDark ? MarginalColors.nightSurface : MarginalColors.surface,
-      surfaceContainerHighest: isDark ? MarginalColors.nightSurface : MarginalColors.surface2,
+      surfaceContainerHighest: isDark
+          ? MarginalColors.nightSurface
+          : MarginalColors.surface2,
     );
     final base = ThemeData.from(colorScheme: colorScheme, useMaterial3: true);
     return base.copyWith(
-      scaffoldBackgroundColor: isDark ? MarginalColors.nightBg : MarginalColors.bg,
+      scaffoldBackgroundColor: isDark
+          ? MarginalColors.nightBg
+          : MarginalColors.bg,
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? MarginalColors.nightSurface : MarginalColors.surface,
+        backgroundColor: isDark
+            ? MarginalColors.nightSurface
+            : MarginalColors.surface,
         foregroundColor: isDark ? MarginalColors.nightInk : MarginalColors.ink,
         elevation: 0,
         scrolledUnderElevation: 1,
@@ -89,7 +94,9 @@ class MarginalTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: isDark ? Colors.white10 : MarginalColors.line),
+          side: BorderSide(
+            color: isDark ? Colors.white10 : MarginalColors.line,
+          ),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
@@ -98,7 +105,9 @@ class MarginalTheme {
           backgroundColor: MarginalColors.accent,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(44),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
@@ -106,29 +115,50 @@ class MarginalTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: MarginalColors.accent,
           minimumSize: const Size.fromHeight(44),
-          side: BorderSide(color: isDark ? Colors.white24 : MarginalColors.line),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          side: BorderSide(
+            color: isDark ? Colors.white24 : MarginalColors.line,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? MarginalColors.nightSurface : MarginalColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        fillColor: isDark
+            ? MarginalColors.nightSurface
+            : MarginalColors.surface,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 13,
+          vertical: 11,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? Colors.white24 : MarginalColors.line),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white24 : MarginalColors.line,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? Colors.white24 : MarginalColors.line),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white24 : MarginalColors.line,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: MarginalColors.accent, width: 1.4),
+          borderSide: const BorderSide(
+            color: MarginalColors.accent,
+            width: 1.4,
+          ),
         ),
       ),
-      dividerTheme: DividerThemeData(color: isDark ? Colors.white12 : MarginalColors.line, thickness: 1),
-      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+      dividerTheme: DividerThemeData(
+        color: isDark ? Colors.white12 : MarginalColors.line,
+        thickness: 1,
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 }
