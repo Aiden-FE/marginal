@@ -27,7 +27,9 @@ class ReaderParagraphSheet extends StatelessWidget {
 
   void _run(BuildContext context, VoidCallback? action) {
     Navigator.of(context).pop();
-    action?.call();
+    if (action != null) {
+      Future<void>.delayed(const Duration(milliseconds: 260), action);
+    }
   }
 
   @override
@@ -76,9 +78,13 @@ class ReaderParagraphSheet extends StatelessWidget {
             ),
             ListTile(
               key: const Key('action-illustrate'),
+              enabled: onIllustrate != null,
               leading: const Icon(Icons.auto_awesome),
               title: const Text('AI 插图'),
-              onTap: () => _run(context, onIllustrate),
+              subtitle: onIllustrate == null ? const Text('请先配置 AI 供应商') : null,
+              onTap: onIllustrate == null
+                  ? null
+                  : () => _run(context, onIllustrate),
             ),
           ],
         ),

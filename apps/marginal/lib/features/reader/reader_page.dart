@@ -280,13 +280,22 @@ class _ReaderPageState extends State<ReaderPage> {
     });
   }
 
-  void _toggleChrome() {
-    setState(() => _chromeVisible = !_chromeVisible);
+  void _showChrome() {
     if (_chromeVisible) {
       _bumpChrome();
-    } else {
-      _chromeTimer?.cancel();
+      return;
     }
+    setState(() => _chromeVisible = true);
+    _bumpChrome();
+  }
+
+  void _toggleChrome() {
+    if (!_chromeVisible) {
+      _showChrome();
+      return;
+    }
+    setState(() => _chromeVisible = false);
+    _chromeTimer?.cancel();
   }
 
   void _onScroll() {
@@ -369,7 +378,11 @@ class _ReaderPageState extends State<ReaderPage> {
         onCopy: () => _copyParagraph(paragraph),
         onShareText: () => _shareParagraphText(paragraph),
         onPoster: () => _showPosterSheet(paragraph),
-        onIllustrate: () => _illustrateParagraph(paragraph, paraIndex),
+        onIllustrate:
+            widget.onIllustrateParagraphAt == null &&
+                widget.onIllustrateParagraph == null
+            ? null
+            : () => _illustrateParagraph(paragraph, paraIndex),
       ),
     );
   }
@@ -485,6 +498,16 @@ class _ReaderPageState extends State<ReaderPage> {
         currentIndex: _index,
         bookmarks: _bookmarks,
         onSelectChapter: (chapter) => _openChapterById(chapter.id),
+        onBookmarkToggled: (chapter) async {
+          prefs.toggleChapterBookmark(
+            _settings,
+            widget.work.id,
+            chapter.id,
+            chapter.title,
+          );
+          setState(() {});
+          await _persistSettings();
+        },
         onBookmarkRemoved: (bookmark) async {
           prefs.toggleChapterBookmark(
             _settings,
@@ -616,6 +639,21 @@ class _ReaderPageState extends State<ReaderPage> {
                     child: _buildContent(palette),
                   ),
           ),
+          if (!_chromeVisible && !_loading)
+            Positioned.fill(
+              child: Center(
+                child: Semantics(
+                  button: true,
+                  label: '显示阅读菜单',
+                  child: GestureDetector(
+                    key: const Key('reader-chrome-wake-zone'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _showChrome,
+                    child: const SizedBox(width: 180, height: 180),
+                  ),
+                ),
+              ),
+            ),
           if (!_loading && _chapters.isNotEmpty)
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
@@ -627,6 +665,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Widget _buildContent(ReaderPalette palette) {
     return GestureDetector(
+      key: const Key('reader-chrome-toggle-zone'),
+      behavior: HitTestBehavior.opaque,
       onTap: _toggleChrome,
       child: SingleChildScrollView(
         controller: _scrollController,
@@ -667,7 +707,9 @@ class _ReaderPageState extends State<ReaderPage> {
       padding: const EdgeInsets.only(bottom: 16),
       child: GestureDetector(
         key: _paraKey(i),
-        onTap: () => _showParagraphSheet(i),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _chromeVisible ? _showParagraphSheet(i) : _showChrome(),
+        onLongPress: () => _showParagraphSheet(i),
         child: Text.rich(
           TextSpan(
             text: _paragraphs[i],
@@ -691,57 +733,62 @@ class _ReaderPageState extends State<ReaderPage> {
   Widget _buildTopChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
     return Positioned(
+      key: const Key('reader-top-chrome'),
       top: 0,
       left: 0,
       right: 0,
-      child: AnimatedSlide(
-        offset: _chromeVisible ? Offset.zero : const Offset(0, -1),
-        duration: _chromeDuration,
-        child: AnimatedOpacity(
-          opacity: _chromeVisible ? 1 : 0,
+      child: IgnorePointer(
+        ignoring: !_chromeVisible,
+        child: AnimatedSlide(
+          offset: _chromeVisible ? Offset.zero : const Offset(0, -1),
           duration: _chromeDuration,
-          child: Material(
-            color: palette.chrome,
-            child: SafeArea(
-              bottom: false,
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: '返回',
-                    icon: Icon(Icons.arrow_back, color: foreground),
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
-                  Expanded(
-                    child: Text(
-                      widget.work.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: MarginalTheme.serif.copyWith(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: foreground,
+          child: AnimatedOpacity(
+            opacity: _chromeVisible ? 1 : 0,
+            duration: _chromeDuration,
+            child: Material(
+              color: palette.chrome,
+              child: SafeArea(
+                bottom: false,
+                child: Row(
+                  children: [
+                    IconButton(
+                      key: const Key('reader-back-home'),
+                      tooltip: '返回主页',
+                      icon: Icon(Icons.arrow_back, color: foreground),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    Expanded(
+                      child: Text(
+                        widget.work.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: MarginalTheme.serif.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: foreground,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: '段落收藏',
-                    icon: Icon(Icons.star_border, color: foreground),
-                    onPressed: _showFavorites,
-                  ),
-                  if (widget.onOpenEntities != null)
                     IconButton(
-                      tooltip: '实体',
-                      icon: Icon(Icons.groups, color: foreground),
-                      onPressed: () => widget.onOpenEntities!(context),
+                      tooltip: '段落收藏',
+                      icon: Icon(Icons.star_border, color: foreground),
+                      onPressed: _showFavorites,
                     ),
-                  if (widget.onOpenIllustrations != null)
-                    IconButton(
-                      tooltip: '插图',
-                      icon: Icon(Icons.image_outlined, color: foreground),
-                      onPressed: () => widget.onOpenIllustrations!(context),
-                    ),
-                ],
+                    if (widget.onOpenEntities != null)
+                      IconButton(
+                        tooltip: '实体',
+                        icon: Icon(Icons.groups, color: foreground),
+                        onPressed: () => widget.onOpenEntities!(context),
+                      ),
+                    if (widget.onOpenIllustrations != null)
+                      IconButton(
+                        tooltip: '插图',
+                        icon: Icon(Icons.image_outlined, color: foreground),
+                        onPressed: () => widget.onOpenIllustrations!(context),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -755,75 +802,79 @@ class _ReaderPageState extends State<ReaderPage> {
     final compact = VisualDensity.compact;
     final bookmarked = _isBookmarked(_currentChapter!.id);
     return Positioned(
+      key: const Key('reader-bottom-chrome'),
       bottom: 0,
       left: 0,
       right: 0,
-      child: AnimatedSlide(
-        offset: _chromeVisible ? Offset.zero : const Offset(0, 1),
-        duration: _chromeDuration,
-        child: AnimatedOpacity(
-          opacity: _chromeVisible ? 1 : 0,
+      child: IgnorePointer(
+        ignoring: !_chromeVisible,
+        child: AnimatedSlide(
+          offset: _chromeVisible ? Offset.zero : const Offset(0, 1),
           duration: _chromeDuration,
-          child: Material(
-            color: palette.chrome,
-            child: SafeArea(
-              top: false,
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: '上一章',
-                    visualDensity: compact,
-                    icon: Icon(Icons.chevron_left, color: foreground),
-                    onPressed: _index > 0
-                        ? () => _open(_chapters, _index - 1)
-                        : null,
-                  ),
-                  Expanded(
-                    child: Text(
-                      '第 ${_index + 1}/${_chapters.length} 章',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: foreground),
+          child: AnimatedOpacity(
+            opacity: _chromeVisible ? 1 : 0,
+            duration: _chromeDuration,
+            child: Material(
+              color: palette.chrome,
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: '上一章',
+                      visualDensity: compact,
+                      icon: Icon(Icons.chevron_left, color: foreground),
+                      onPressed: _index > 0
+                          ? () => _open(_chapters, _index - 1)
+                          : null,
                     ),
-                  ),
-                  IconButton(
-                    tooltip: '下一章',
-                    visualDensity: compact,
-                    icon: Icon(Icons.chevron_right, color: foreground),
-                    onPressed: _index + 1 < _chapters.length
-                        ? () => _open(_chapters, _index + 1)
-                        : null,
-                  ),
-                  IconButton(
-                    tooltip: '书签',
-                    visualDensity: compact,
-                    icon: Icon(
-                      bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                      color: bookmarked ? palette.accent : foreground,
+                    Expanded(
+                      child: Text(
+                        '第 ${_index + 1}/${_chapters.length} 章',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: foreground),
+                      ),
                     ),
-                    onPressed: _toggleChapterBookmark,
-                  ),
-                  IconButton(
-                    tooltip: _autoRunning ? '暂停自动阅读' : '自动阅读',
-                    visualDensity: compact,
-                    icon: Icon(
-                      _autoRunning ? Icons.pause : Icons.play_arrow,
-                      color: _autoRunning ? palette.accent : foreground,
+                    IconButton(
+                      tooltip: '下一章',
+                      visualDensity: compact,
+                      icon: Icon(Icons.chevron_right, color: foreground),
+                      onPressed: _index + 1 < _chapters.length
+                          ? () => _open(_chapters, _index + 1)
+                          : null,
                     ),
-                    onPressed: _toggleAuto,
-                  ),
-                  IconButton(
-                    tooltip: '章节列表',
-                    visualDensity: compact,
-                    icon: Icon(Icons.menu_book_outlined, color: foreground),
-                    onPressed: _showChapterSheet,
-                  ),
-                  IconButton(
-                    tooltip: '阅读设置',
-                    visualDensity: compact,
-                    icon: Icon(Icons.tune, color: foreground),
-                    onPressed: _showSettings,
-                  ),
-                ],
+                    IconButton(
+                      tooltip: bookmarked ? '取消收藏章节' : '收藏章节',
+                      visualDensity: compact,
+                      icon: Icon(
+                        bookmarked ? Icons.bookmark : Icons.bookmark_border,
+                        color: bookmarked ? palette.accent : foreground,
+                      ),
+                      onPressed: _toggleChapterBookmark,
+                    ),
+                    IconButton(
+                      tooltip: _autoRunning ? '暂停自动阅读' : '自动阅读',
+                      visualDensity: compact,
+                      icon: Icon(
+                        _autoRunning ? Icons.pause : Icons.play_arrow,
+                        color: _autoRunning ? palette.accent : foreground,
+                      ),
+                      onPressed: _toggleAuto,
+                    ),
+                    IconButton(
+                      tooltip: '章节列表',
+                      visualDensity: compact,
+                      icon: Icon(Icons.menu_book_outlined, color: foreground),
+                      onPressed: _showChapterSheet,
+                    ),
+                    IconButton(
+                      tooltip: '阅读设置',
+                      visualDensity: compact,
+                      icon: Icon(Icons.tune, color: foreground),
+                      onPressed: _showSettings,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

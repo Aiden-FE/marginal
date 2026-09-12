@@ -142,6 +142,8 @@ class _LibraryPageState extends State<LibraryPage> {
     final initial = chapters.any((c) => c.id == saved)
         ? saved!
         : chapters.first.id;
+    final extraction = _extractionService();
+    final generation = _generationService();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ReaderPage(
@@ -153,7 +155,7 @@ class _LibraryPageState extends State<LibraryPage> {
               builder: (_) => EntitiesPage(
                 services: widget.services,
                 work: work,
-                extractionService: _extractionService(),
+                extractionService: extraction,
               ),
             ),
           ),
@@ -162,52 +164,65 @@ class _LibraryPageState extends State<LibraryPage> {
               builder: (_) => IllustrationsPage(
                 services: widget.services,
                 work: work,
-                generationService: _generationService(),
+                generationService: generation,
               ),
             ),
           ),
-          onIllustrateParagraphAt: (chapterId, paraIndex, paragraph) =>
-              _generateParagraphIllustration(
-                work,
-                chapterId,
-                paraIndex,
-                paragraph,
-              ),
+          onIllustrateParagraphAt: generation == null
+              ? null
+              : (chapterId, paraIndex, paragraph) =>
+                    _generateParagraphIllustration(
+                      work,
+                      chapterId,
+                      paraIndex,
+                      paragraph,
+                      generation,
+                    ),
         ),
       ),
     );
     await _refresh();
   }
 
-  ProviderEntry _activeProvider() =>
-      widget.services.providerStore.providers.firstWhere(
-        (p) => p.id != 'demo',
-        orElse: () => widget.services.providerStore.providers.first,
-      );
+  ProviderEntry? _activeProvider() {
+    for (final provider in widget.services.providerStore.providers) {
+      if (provider.id != 'demo') return provider;
+    }
+    return null;
+  }
 
-  ProviderEntityExtractionService _extractionService() =>
-      ProviderEntityExtractionService(
-        repository: widget.services.repository,
-        provider: _activeProvider(),
-      );
+  ProviderEntityExtractionService? _extractionService() {
+    final provider = _activeProvider();
+    return provider == null
+        ? null
+        : ProviderEntityExtractionService(
+            repository: widget.services.repository,
+            provider: provider,
+          );
+  }
 
-  ProviderIllustrationGenerationService _generationService() =>
-      ProviderIllustrationGenerationService(
-        repository: widget.services.repository,
-        provider: _activeProvider(),
-      );
+  ProviderIllustrationGenerationService? _generationService() {
+    final provider = _activeProvider();
+    return provider == null
+        ? null
+        : ProviderIllustrationGenerationService(
+            repository: widget.services.repository,
+            provider: provider,
+          );
+  }
 
   Future<void> _generateParagraphIllustration(
     Work work,
     String chapterId,
     int paraIndex,
     String paragraph,
+    ProviderIllustrationGenerationService generation,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(const SnackBar(content: Text('正在生成段落插图…')));
     try {
-      final provider = _activeProvider();
-      final blobId = await _generationService().generate(
+      final provider = _activeProvider()!;
+      final blobId = await generation.generate(
         workId: work.id,
         prompt: '为小说段落生成插图：$paragraph',
       );

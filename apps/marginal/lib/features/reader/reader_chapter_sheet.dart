@@ -14,6 +14,7 @@ class ReaderChapterSheet extends StatefulWidget {
     required this.bookmarks,
     required this.onSelectChapter,
     required this.onBookmarkRemoved,
+    required this.onBookmarkToggled,
   });
 
   final List<Chapter> chapters;
@@ -24,6 +25,7 @@ class ReaderChapterSheet extends StatefulWidget {
   final List<prefs.ChapterBookmark> bookmarks;
   final ValueChanged<Chapter> onSelectChapter;
   final ValueChanged<prefs.ChapterBookmark> onBookmarkRemoved;
+  final ValueChanged<Chapter> onBookmarkToggled;
 
   @override
   State<ReaderChapterSheet> createState() => _ReaderChapterSheetState();
@@ -169,9 +171,20 @@ class _ReaderChapterSheetState extends State<ReaderChapterSheet> {
                   ? const TextStyle(fontWeight: FontWeight.w700)
                   : null,
             ),
-            trailing: _isBookmarked(widget.chapters[i].id)
-                ? const Icon(Icons.star, size: 18, color: Color(0xFFD9A13C))
-                : null,
+            trailing: IconButton(
+              key: ValueKey('toggle-chapter-bookmark-${widget.chapters[i].id}'),
+              tooltip: _isBookmarked(widget.chapters[i].id) ? '取消收藏章节' : '收藏章节',
+              icon: Icon(
+                _isBookmarked(widget.chapters[i].id)
+                    ? Icons.bookmark
+                    : Icons.bookmark_border,
+                size: 20,
+                color: _isBookmarked(widget.chapters[i].id)
+                    ? const Color(0xFFD9A13C)
+                    : null,
+              ),
+              onPressed: () => _toggleBookmark(widget.chapters[i]),
+            ),
             onTap: () => _select(widget.chapters[i]),
           ),
       ],
@@ -267,8 +280,33 @@ class _ReaderChapterSheetState extends State<ReaderChapterSheet> {
     widget.onBookmarkRemoved(bookmark);
   }
 
+  void _toggleBookmark(Chapter chapter) {
+    final existing = _bookmarks
+        .where((b) => b.chapterId == chapter.id)
+        .firstOrNull;
+    setState(() {
+      if (existing != null) {
+        _bookmarks.removeWhere((b) => b.chapterId == chapter.id);
+      } else {
+        _bookmarks.insert(
+          0,
+          prefs.ChapterBookmark(
+            chapterId: chapter.id,
+            chapterTitle: chapter.title,
+            addedAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+    });
+    widget.onBookmarkToggled(chapter);
+  }
+
   void _select(Chapter chapter) {
     Navigator.of(context).pop();
     widget.onSelectChapter(chapter);
   }
+}
+
+extension<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

@@ -84,14 +84,14 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.byTooltip('书签'));
+    await tester.tap(find.byTooltip('收藏章节'));
     await tester.pumpAndSettle();
     var saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), hasLength(1));
     expect(find.byIcon(Icons.bookmark), findsOneWidget);
 
     await afterSnackBar(tester);
-    await tester.tap(find.byTooltip('书签'));
+    await tester.tap(find.byTooltip('取消收藏章节'));
     await tester.pumpAndSettle();
     saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), isEmpty);
