@@ -1,14 +1,13 @@
-import 'dart:ui' as ui;
+import 'dart:typed_data';
 
-import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart' show XFile;
 
-import '../../app/poster.dart';
+import '../../app/poster_capture.dart';
 import '../../app/share.dart';
 
-/// 分享海报预览 —— RepaintBoundary 捕获 ParagraphPosterPainter 画布，
-/// capture 后经 ShareService 分享 PNG；Web 降级为仅预览 + 提示。
+/// 分享海报 —— 打开即预渲染 PNG（Safari 手势上下文之外无法分享异步产物），
+/// 预览用真实 <img>（长按即可存储/分享），分享按钮直接使用已就绪字节。
 class ReaderPosterSheet extends StatefulWidget {
   const ReaderPosterSheet({
     super.key,
@@ -16,48 +15,67 @@ class ReaderPosterSheet extends StatefulWidget {
     required this.chapterTitle,
     required this.text,
     required this.shareService,
+    this.encoder = renderPosterPng,
   });
 
   final String workTitle;
   final String chapterTitle;
   final String text;
   final ShareService shareService;
+  final Future<Uint8List> Function({
+    required String workTitle,
+    required String chapterTitle,
+    required String text,
+    double pixelRatio,
+  })?
+  encoder;
 
   @override
   State<ReaderPosterSheet> createState() => _ReaderPosterSheetState();
 }
 
 class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
-  final GlobalKey _boundaryKey = GlobalKey();
+  Uint8List? _readyPng;
+  String? _error;
   bool _sharing = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _render();
+  }
+
+  Future<void> _render() async {
+    try {
+      final encode = widget.encoder;
+      if (encode == null) return;
+      final bytes = await encode(
+        workTitle: widget.workTitle,
+        chapterTitle: widget.chapterTitle,
+        text: widget.text,
+      );
+      if (!mounted) return;
+      setState(() => _readyPng = bytes);
+    } catch (e) {
+      if (mounted) setState(() => _error = '海报生成失败：$e');
+    }
+  }
+
   Future<void> _shareImage() async {
+    final bytes = _readyPng;
+    if (bytes == null || _sharing) return;
     setState(() => _sharing = true);
     try {
-      final boundary = _boundaryKey.currentContext?.findRenderObject();
-      if (boundary is! RenderRepaintBoundary) return;
-      final image = await boundary.toImage(pixelRatio: 3);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      if (!mounted) return;
-      if (data == null) {
-        _snack('海报生成失败，请重试');
-        return;
-      }
       final file = XFile.fromData(
-        data.buffer.asUint8List(),
+        bytes,
         mimeType: 'image/png',
         name: 'marginal-poster.png',
       );
       final ok = await widget.shareService.shareImage(file);
       if (!mounted) return;
-      if (ok) {
-        Navigator.of(context).pop();
-      } else {
-        _snack('当前环境不支持直接分享图片，可长按海报截图保存');
-      }
+      if (!ok) _snack('当前环境不支持直接分享，长按海报图片可存储/分享');
     } catch (e) {
-      if (mounted) _snack('海报生成失败：$e');
+      if (mounted) _snack('分享失败：$e');
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -69,30 +87,41 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final lines = wrapPosterText(widget.text);
-    final height = (520 + lines.length * 62).clamp(1200, 2400).toDouble();
+    final ready = _readyPng != null;
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Color(0xFFAD4E43)),
+                ),
+              ),
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: AspectRatio(
-                aspectRatio: 900 / height,
-                child: RepaintBoundary(
-                  key: _boundaryKey,
-                  child: CustomPaint(
-                    painter: ParagraphPosterPainter(
-                      workTitle: widget.workTitle,
-                      chapterTitle: widget.chapterTitle,
-                      text: widget.text,
-                    ),
-                  ),
+              child: SizedBox(
+                width: double.infinity,
+                child: AspectRatio(
+                  aspectRatio: 900 / 1200,
+                  child: ready
+                      ? Image.memory(_readyPng!, fit: BoxFit.contain)
+                      : const Center(child: CircularProgressIndicator()),
                 ),
               ),
             ),
+            if (ready)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '长按海报图片可存储或分享',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -105,7 +134,7 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _sharing ? null : _shareImage,
+                    onPressed: ready && !_sharing ? _shareImage : null,
                     icon: _sharing
                         ? const SizedBox(
                             width: 16,

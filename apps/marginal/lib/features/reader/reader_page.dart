@@ -34,6 +34,7 @@ class ReaderPage extends StatefulWidget {
     this.onIllustrateParagraph,
     this.onIllustrateParagraphAt,
     this.shareService,
+    this.onPosterEncoder,
   });
 
   final PlatformServices services;
@@ -55,6 +56,15 @@ class ReaderPage extends StatefulWidget {
 
   /// 分享服务（测试注入 fake；默认走 share_plus）。
   final ShareService? shareService;
+
+  /// 海报 PNG 编码器（可注入以便测试）。
+  final Future<Uint8List> Function({
+    required String workTitle,
+    required String chapterTitle,
+    required String text,
+    double pixelRatio,
+  })?
+  onPosterEncoder;
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
@@ -439,6 +449,7 @@ class _ReaderPageState extends State<ReaderPage> {
         chapterTitle: chapter.title,
         text: paragraph,
         shareService: _share,
+        encoder: widget.onPosterEncoder,
       ),
     );
   }

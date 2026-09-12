@@ -1,7 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marginal/app/platform_services.dart';
-import 'package:marginal/app/poster.dart';
 import 'package:marginal/core/types.dart';
 import 'package:marginal/data/memory_repository.dart';
 import 'package:marginal/features/library/library_page.dart';
@@ -22,6 +23,86 @@ Future<PlatformServices> seedReader() async {
     '第三段唯一文本。',
   );
   return PlatformServices(repository: repo);
+}
+
+final capturedPosterTexts = <String>[];
+
+Future<Uint8List> recordingPosterEncoder({
+  required String workTitle,
+  required String chapterTitle,
+  required String text,
+  double pixelRatio = 3,
+}) async {
+  capturedPosterTexts.add(text);
+  return Uint8List.fromList(const [
+    0x89,
+    0x50,
+    0x4E,
+    0x47,
+    0x0D,
+    0x0A,
+    0x1A,
+    0x0A,
+    0x00,
+    0x00,
+    0x00,
+    0x0D,
+    0x49,
+    0x48,
+    0x44,
+    0x52,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x08,
+    0x06,
+    0x00,
+    0x00,
+    0x00,
+    0x1F,
+    0x15,
+    0xC4,
+    0x89,
+    0x00,
+    0x00,
+    0x00,
+    0x0D,
+    0x49,
+    0x44,
+    0x41,
+    0x54,
+    0x78,
+    0x9C,
+    0x63,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x05,
+    0x00,
+    0x01,
+    0x0D,
+    0x0A,
+    0x2D,
+    0xB4,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x49,
+    0x45,
+    0x4E,
+    0x44,
+    0xAE,
+    0x42,
+    0x60,
+    0x82,
+  ]);
 }
 
 void main() {
@@ -59,6 +140,7 @@ void main() {
           services: services,
           work: const Work(id: 'w', title: '交互验收书'),
           initialChapterId: 'c0',
+          onPosterEncoder: recordingPosterEncoder,
         ),
       ),
     );
@@ -69,15 +151,8 @@ void main() {
     await tester.tap(find.byKey(const Key('action-poster')));
     await tester.pumpAndSettle();
 
-    final paint = tester.widget<CustomPaint>(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is CustomPaint && widget.painter is ParagraphPosterPainter,
-      ),
-    );
-    final painter = paint.painter! as ParagraphPosterPainter;
-    expect(painter.text, '第二段唯一文本。');
-    expect(painter.text, isNot('第一段唯一文本。'));
+    expect(capturedPosterTexts.single, '第二段唯一文本。');
+    expect(capturedPosterTexts.single, isNot('第一段唯一文本。'));
   });
 
   testWidgets('仅 Demo provider 时 AI 插图入口不可点击', (tester) async {
@@ -108,6 +183,7 @@ void main() {
           services: services,
           work: const Work(id: 'w', title: '交互验收书'),
           initialChapterId: 'c0',
+          onPosterEncoder: recordingPosterEncoder,
         ),
       ),
     );
@@ -131,6 +207,7 @@ void main() {
           services: services,
           work: const Work(id: 'w', title: '交互验收书'),
           initialChapterId: 'c0',
+          onPosterEncoder: recordingPosterEncoder,
         ),
       ),
     );
