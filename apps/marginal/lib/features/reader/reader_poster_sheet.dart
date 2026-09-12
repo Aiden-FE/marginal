@@ -16,6 +16,7 @@ class ReaderPosterSheet extends StatefulWidget {
     required this.text,
     required this.shareService,
     this.encoder = renderPosterPng,
+    this.renderTimeout = const Duration(seconds: 6),
   });
 
   final String workTitle;
@@ -30,6 +31,8 @@ class ReaderPosterSheet extends StatefulWidget {
   })?
   encoder;
 
+  final Duration renderTimeout;
+
   @override
   State<ReaderPosterSheet> createState() => _ReaderPosterSheetState();
 }
@@ -38,6 +41,8 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
   Uint8List? _readyPng;
   String? _error;
   bool _sharing = false;
+
+  /// Safari 上 PNG 编码可能挂起：超时给出明确错误而不是永远转圈。
 
   @override
   void initState() {
@@ -53,7 +58,7 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
         workTitle: widget.workTitle,
         chapterTitle: widget.chapterTitle,
         text: widget.text,
-      );
+      ).timeout(widget.renderTimeout);
       if (!mounted) return;
       setState(() => _readyPng = bytes);
     } catch (e) {
@@ -110,6 +115,8 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
                   aspectRatio: 900 / 1200,
                   child: ready
                       ? Image.memory(_readyPng!, fit: BoxFit.contain)
+                      : _error != null
+                      ? Center(child: Text(_error!))
                       : const Center(child: CircularProgressIndicator()),
                 ),
               ),

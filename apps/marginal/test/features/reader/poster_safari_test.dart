@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -73,6 +74,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('长按海报图片'), findsOneWidget);
     expect(find.byType(Image), findsOneWidget);
+  });
+
+  testWidgets('海报编码挂起时超时给出错误提示且按钮禁用', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReaderPosterSheet(
+            workTitle: '书',
+            chapterTitle: '第一章',
+            text: '一段。',
+            shareService: RecordingShareService(),
+            encoder: ({
+              required workTitle,
+              required chapterTitle,
+              required text,
+              double pixelRatio = 3,
+            }) => Completer<Uint8List>().future,
+            renderTimeout: const Duration(milliseconds: 100),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    expect(find.textContaining('海报生成失败'), findsAtLeastNWidgets(1));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '分享图片'),
+    );
+    expect(button.onPressed, isNull, reason: '编码失败时分享按钮禁用');
   });
 }
 

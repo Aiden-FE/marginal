@@ -214,7 +214,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 4));
 
-    await tester.tap(find.byKey(const Key('reader-chrome-wake-zone')));
+    expect(
+      find.byKey(const Key('reader-menu-pill')),
+      findsOneWidget,
+      reason: '菜单收起后应有常驻浮标',
+    );
+    await tester.tap(find.byKey(const Key('reader-menu-pill')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

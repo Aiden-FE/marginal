@@ -1,32 +1,53 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
 import 'package:share_plus/share_plus.dart';
 
 /// 分享能力接口 —— 隔离 share_plus，便于注入 fake 做测试。
 ///
 /// 返回 `true` 表示系统分享流程已完成；`false` 表示当前环境不支持
-/// （如 Web）或用户取消了分享，调用方据此降级（复制 + SnackBar 提示）。
+/// 或用户取消了分享，调用方据此降级（复制 / 长按图片存储 + SnackBar 提示）。
 abstract class ShareService {
   Future<bool> shareText(String text);
   Future<bool> shareImage(XFile file);
 }
 
 /// 生产实现：封装 share_plus v12 的 `SharePlus.instance.share`。
+///
+/// [timeout] 兜底：iOS Safari 上 navigator.share 被拒绝时 promise 可能
+/// 永不返回，超时后按“不支持”处理，UI 不会卡在 loading。
 class SharePlusService implements ShareService {
-  const SharePlusService();
+  const SharePlusService({this.timeout = const Duration(seconds: 10)});
+
+  final Duration timeout;
 
   @override
   Future<bool> shareText(String text) async {
-    if (kIsWeb || text.trim().isEmpty) return false;
-    final result = await SharePlus.instance.share(ShareParams(text: text));
-    return result.status == ShareResultStatus.success;
+    if (text.trim().isEmpty) return false;
+    try {
+      final result = await SharePlus.instance
+          .share(ShareParams(text: text))
+          .timeout(timeout);
+      return result.status == ShareResultStatus.success;
+    } on TimeoutException {
+      return false;
+    } on Object {
+      return false;
+    }
   }
 
   @override
   Future<bool> shareImage(XFile file) async {
-    // Web 无法走系统分享面板分享本地文件：降级为调用方展示预览 + 提示。
-    if (kIsWeb) return false;
-    final result = await SharePlus.instance.share(ShareParams(files: [file]));
-    return result.status == ShareResultStatus.success;
+    try {
+      // iOS Safari 支持 Web Share Level 2（带文件），失败再由调用方降级。
+      final result = await SharePlus.instance
+          .share(ShareParams(files: [file]))
+          .timeout(timeout);
+      return result.status == ShareResultStatus.success;
+    } on TimeoutException {
+      return false;
+    } on Object {
+      return false;
+    }
   }
 }
 

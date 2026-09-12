@@ -675,6 +675,44 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
             ),
+          if (!_chromeVisible && !_loading && _chapters.isNotEmpty)
+            Positioned(
+              right: 16,
+              bottom: MediaQuery.paddingOf(context).bottom + 16,
+              child: Material(
+                color: palette.chrome,
+                borderRadius: BorderRadius.circular(22),
+                child: InkWell(
+                  key: const Key('reader-menu-pill'),
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: _showChrome,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.menu_book,
+                          size: 18,
+                          color: palette.foreground,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '菜单',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: palette.foreground,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (!_loading && _chapters.isNotEmpty)
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
