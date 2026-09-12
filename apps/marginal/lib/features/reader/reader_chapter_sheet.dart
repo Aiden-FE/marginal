@@ -15,6 +15,7 @@ class ReaderChapterSheet extends StatefulWidget {
     required this.onSelectChapter,
     required this.onBookmarkRemoved,
     required this.onBookmarkToggled,
+    this.headerActions = const [],
   });
 
   final List<Chapter> chapters;
@@ -26,6 +27,9 @@ class ReaderChapterSheet extends StatefulWidget {
   final ValueChanged<Chapter> onSelectChapter;
   final ValueChanged<prefs.ChapterBookmark> onBookmarkRemoved;
   final ValueChanged<Chapter> onBookmarkToggled;
+
+  /// 目录顶部全局入口：(标题, 点击后执行；sheet 先关闭)。
+  final List<(String, VoidCallback)> headerActions;
 
   @override
   State<ReaderChapterSheet> createState() => _ReaderChapterSheetState();
@@ -89,6 +93,26 @@ class _ReaderChapterSheetState extends State<ReaderChapterSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.headerActions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final (label, action) in widget.headerActions)
+                    ActionChip(
+                      label: Text(label),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Future<void>.delayed(
+                          const Duration(milliseconds: 260),
+                          action,
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(

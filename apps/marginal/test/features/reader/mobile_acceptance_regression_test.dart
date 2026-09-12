@@ -171,8 +171,8 @@ void main() {
     final services = await seed();
     await openReader(tester, services);
 
-    expect(find.byTooltip('收藏本章'), findsOneWidget);
-    await tester.tap(find.byTooltip('收藏本章'));
+    expect(find.text('收藏本章').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('收藏本章'));
     await tester.pumpAndSettle();
     final saved = await services.repository.getWork('w');
     expect(

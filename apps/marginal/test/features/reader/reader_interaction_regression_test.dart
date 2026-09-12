@@ -116,7 +116,7 @@ void main() {
     expect(find.byType(ReaderPage), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 4));
-    await tester.tap(find.byKey(const Key('reader-chrome-wake-zone')));
+    await tester.tapAt(const Offset(195, 420));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -189,7 +189,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('章节列表'));
+    await tester.tap(find.text('目录'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('toggle-chapter-bookmark-c1')));
     await tester.pumpAndSettle();
@@ -214,22 +214,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 4));
 
-    expect(
-      find.byKey(const Key('reader-menu-pill')),
-      findsOneWidget,
-      reason: '菜单收起后应有常驻浮标',
-    );
-    await tester.tap(find.byKey(const Key('reader-menu-pill')));
+    expect(find.text('收藏段落'), findsNothing);
+
+    // 点击屏幕中央唤醒菜单。
+    await tester.tapAt(const Offset(195, 420));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('收藏段落'), findsNothing);
-    for (final tooltip in ['返回主页', '收藏章节', '自动阅读', '章节列表', '阅读设置']) {
-      expect(
-        find.byTooltip(tooltip).hitTestable(),
-        findsOneWidget,
-        reason: '$tooltip 应在唤出菜单后可见',
-      );
+    for (final label in ['收藏本章', '摘录', '目录', '设置', '自动阅读']) {
+      expect(find.text(label), findsOneWidget, reason: '$label 应在唤出菜单后可见');
     }
+    expect(find.text('自动阅读').hitTestable(), findsOneWidget);
   });
 }

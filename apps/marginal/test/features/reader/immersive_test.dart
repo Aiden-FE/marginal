@@ -91,7 +91,7 @@ void main() {
 
   testWidgets('弹层打开时 chrome 暂停收起，关闭后恢复倒计时', (tester) async {
     await pumpReader(tester);
-    await tester.tap(find.byTooltip('阅读设置'));
+    await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
     expect(find.text('阅读设置'), findsWidgets);
 

@@ -518,6 +518,13 @@ class _ReaderPageState extends State<ReaderPage> {
         chapterTexts: texts,
         currentIndex: _index,
         bookmarks: _bookmarks,
+        headerActions: [
+          ('段落收藏', () => _showFavorites()),
+          if (widget.onOpenEntities != null)
+            ('实体卡', () => widget.onOpenEntities!(context)),
+          if (widget.onOpenIllustrations != null)
+            ('插图', () => widget.onOpenIllustrations!(context)),
+        ],
         onSelectChapter: (chapter) => _openChapterById(chapter.id),
         onBookmarkToggled: (chapter) async {
           prefs.toggleChapterBookmark(
@@ -660,59 +667,6 @@ class _ReaderPageState extends State<ReaderPage> {
                     child: _buildContent(palette),
                   ),
           ),
-          if (!_chromeVisible && !_loading)
-            Positioned.fill(
-              child: Center(
-                child: Semantics(
-                  button: true,
-                  label: '显示阅读菜单',
-                  child: GestureDetector(
-                    key: const Key('reader-chrome-wake-zone'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _showChrome,
-                    child: const SizedBox(width: 180, height: 180),
-                  ),
-                ),
-              ),
-            ),
-          if (!_chromeVisible && !_loading && _chapters.isNotEmpty)
-            Positioned(
-              right: 16,
-              bottom: MediaQuery.paddingOf(context).bottom + 16,
-              child: Material(
-                color: palette.chrome,
-                borderRadius: BorderRadius.circular(22),
-                child: InkWell(
-                  key: const Key('reader-menu-pill'),
-                  borderRadius: BorderRadius.circular(22),
-                  onTap: _showChrome,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.menu_book,
-                          size: 18,
-                          color: palette.foreground,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '菜单',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: palette.foreground,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
           if (!_loading && _chapters.isNotEmpty)
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
@@ -830,32 +784,28 @@ class _ReaderPageState extends State<ReaderPage> {
                         ),
                       ),
                     ),
-                    IconButton(
+                    _TopAction(
                       key: const Key('reader-chapter-favorite'),
-                      tooltip: bookmarked ? '取消收藏本章' : '收藏本章',
-                      icon: Icon(
-                        bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                        color: bookmarked ? palette.accent : foreground,
-                      ),
-                      onPressed: _toggleChapterBookmark,
+                      label: bookmarked ? '已收藏' : '收藏本章',
+                      color: bookmarked ? palette.accent : foreground,
+                      onTap: _toggleChapterBookmark,
                     ),
-                    IconButton(
-                      tooltip: '段落收藏',
-                      icon: Icon(Icons.star_border, color: foreground),
-                      onPressed: _showFavorites,
+                    _TopAction(
+                      label: '摘录',
+                      color: foreground,
+                      onTap: _showFavorites,
                     ),
-                    if (widget.onOpenEntities != null)
-                      IconButton(
-                        tooltip: '实体',
-                        icon: Icon(Icons.groups, color: foreground),
-                        onPressed: () => widget.onOpenEntities!(context),
-                      ),
-                    if (widget.onOpenIllustrations != null)
-                      IconButton(
-                        tooltip: '插图',
-                        icon: Icon(Icons.image_outlined, color: foreground),
-                        onPressed: () => widget.onOpenIllustrations!(context),
-                      ),
+                    _TopAction(
+                      key: const Key('reader-open-toc'),
+                      label: '目录',
+                      color: foreground,
+                      onTap: _showChapterSheet,
+                    ),
+                    _TopAction(
+                      label: '设置',
+                      color: foreground,
+                      onTap: _showSettings,
+                    ),
                   ],
                 ),
               ),
@@ -868,8 +818,6 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Widget _buildBottomChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
-    final compact = VisualDensity.compact;
-    final bookmarked = _isBookmarked(_currentChapter!.id);
     return Positioned(
       key: const Key('reader-bottom-chrome'),
       bottom: 0,
@@ -889,59 +837,40 @@ class _ReaderPageState extends State<ReaderPage> {
                 top: false,
                 child: Row(
                   children: [
-                    IconButton(
-                      tooltip: '上一章',
-                      visualDensity: compact,
-                      icon: Icon(Icons.chevron_left, color: foreground),
+                    TextButton(
                       onPressed: _index > 0
                           ? () => _open(_chapters, _index - 1)
                           : null,
+                      child: Text(
+                        '上一章',
+                        style: TextStyle(fontSize: 13, color: foreground),
+                      ),
                     ),
                     Expanded(
                       child: Text(
-                        '第 ${_index + 1}/${_chapters.length} 章 · '
-                        '${(_liveRatio * 100).round()}%',
+                        '第 ${_index + 1}/${_chapters.length} 章 · ${(_liveRatio * 100).round()}%',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: foreground),
                       ),
                     ),
-                    IconButton(
-                      tooltip: '下一章',
-                      visualDensity: compact,
-                      icon: Icon(Icons.chevron_right, color: foreground),
+                    TextButton(
+                      onPressed: _toggleAuto,
+                      child: Text(
+                        _autoRunning ? '停止自动' : '自动阅读',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _autoRunning ? palette.accent : foreground,
+                        ),
+                      ),
+                    ),
+                    TextButton(
                       onPressed: _index + 1 < _chapters.length
                           ? () => _open(_chapters, _index + 1)
                           : null,
-                    ),
-                    IconButton(
-                      tooltip: bookmarked ? '取消收藏章节' : '收藏章节',
-                      visualDensity: compact,
-                      icon: Icon(
-                        bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                        color: bookmarked ? palette.accent : foreground,
+                      child: Text(
+                        '下一章',
+                        style: TextStyle(fontSize: 13, color: foreground),
                       ),
-                      onPressed: _toggleChapterBookmark,
-                    ),
-                    IconButton(
-                      tooltip: _autoRunning ? '暂停自动阅读' : '自动阅读',
-                      visualDensity: compact,
-                      icon: Icon(
-                        _autoRunning ? Icons.pause : Icons.play_arrow,
-                        color: _autoRunning ? palette.accent : foreground,
-                      ),
-                      onPressed: _toggleAuto,
-                    ),
-                    IconButton(
-                      tooltip: '章节列表',
-                      visualDensity: compact,
-                      icon: Icon(Icons.menu_book_outlined, color: foreground),
-                      onPressed: _showChapterSheet,
-                    ),
-                    IconButton(
-                      tooltip: '阅读设置',
-                      visualDensity: compact,
-                      icon: Icon(Icons.tune, color: foreground),
-                      onPressed: _showSettings,
                     ),
                   ],
                 ),
@@ -969,4 +898,31 @@ class _ReaderPageState extends State<ReaderPage> {
       ),
     );
   }
+}
+
+/// 顶栏文字动作按钮：Safari 上图标字体可能不渲染，文字保证可见。
+class _TopAction extends StatelessWidget {
+  const _TopAction({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      minimumSize: const Size(0, 44),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color),
+    ),
+  );
 }

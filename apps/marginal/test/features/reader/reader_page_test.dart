@@ -71,7 +71,7 @@ void main() {
     await pumpReader(tester, services);
     expect(find.textContaining('第 1/2 章'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('下一章'));
+    await tester.tap(find.text('下一章'));
     await tester.pumpAndSettle();
     expect(find.textContaining('第 2/2 章'), findsOneWidget);
     expect(find.text('第三段。'), findsOneWidget);
@@ -84,14 +84,14 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.byTooltip('收藏章节'));
+    await tester.tap(find.text('收藏本章'));
     await tester.pumpAndSettle();
     var saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), hasLength(1));
-    expect(find.byIcon(Icons.bookmark), findsAtLeastNWidgets(1));
+    expect(find.text('已收藏'), findsOneWidget);
 
     await afterSnackBar(tester);
-    await tester.tap(find.byTooltip('取消收藏章节'));
+    await tester.tap(find.text('已收藏'));
     await tester.pumpAndSettle();
     saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), isEmpty);
@@ -102,7 +102,7 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.byTooltip('阅读设置'));
+    await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
     final rect = tester.getRect(find.byKey(const Key('font-size-slider')));
     await tester.tapAt(Offset(rect.left + rect.width * 0.95, rect.center.dy));
@@ -119,7 +119,7 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.byTooltip('阅读设置'));
+    await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('theme-dark')));
     await tester.pump();
@@ -142,7 +142,7 @@ void main() {
     final services = await seed(chapterTexts: [longText]);
     await pumpReader(tester, services);
 
-    await tester.tap(find.byTooltip('自动阅读'));
+    await tester.tap(find.text('自动阅读'));
     await tester.pump(const Duration(seconds: 1));
     final moved = scrollOffset(tester);
     expect(moved, greaterThan(40), reason: '60 px/s 滚动 1 秒');
@@ -151,7 +151,7 @@ void main() {
     final movedMore = scrollOffset(tester);
     expect(movedMore, greaterThan(moved));
 
-    await tester.tap(find.byTooltip('暂停自动阅读'));
+    await tester.tap(find.text('停止自动'));
     await tester.pump(const Duration(seconds: 1));
     expect(scrollOffset(tester), movedMore);
   });
@@ -160,14 +160,14 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.byTooltip('自动阅读'));
+    await tester.tap(find.text('自动阅读'));
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.textContaining('第 2/2 章'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 2));
     expect(find.textContaining('最后一章'), findsOneWidget);
-    expect(find.byTooltip('自动阅读'), findsOneWidget, reason: '停止后按钮回到播放态');
+    expect(find.text('自动阅读'), findsOneWidget, reason: '停止后按钮回到播放态');
   });
 
   testWidgets('恢复阅读位置（chapterId + ratio）', (tester) async {
@@ -221,7 +221,8 @@ void main() {
     final services = await seed(settings: seedSettings);
     await pumpReader(tester, services, settings: seedSettings);
 
-    await tester.tap(find.byTooltip('段落收藏'));
+    await tester.tap(find.text('摘录'));
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(find.text('第三段。'), findsOneWidget);
 
