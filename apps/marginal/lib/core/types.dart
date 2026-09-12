@@ -344,6 +344,112 @@ class ToolCall {
   );
 }
 
+enum EntityKind { character, scene, item }
+
+String entityKindLabel(EntityKind kind) => switch (kind) {
+  EntityKind.character => '角色',
+  EntityKind.scene => '场景',
+  EntityKind.item => '物品',
+};
+
+EntityKind parseEntityKind(String value) => switch (value) {
+  'character' => EntityKind.character,
+  'scene' => EntityKind.scene,
+  'item' => EntityKind.item,
+  _ => EntityKind.character,
+};
+
+/// 实体卡：人物/场景/物品描述卡；canon 状态是插图链路的正典资格。
+class EntityCard {
+  final String id, workId, name, status;
+  final EntityKind kind;
+  final List<String> aliases;
+  final Map<String, String> attributes;
+  final String? portraitBlobId;
+  final int createdAt;
+  const EntityCard({
+    required this.id,
+    required this.workId,
+    required this.name,
+    required this.kind,
+    this.aliases = const [],
+    this.attributes = const {},
+    this.status = 'draft',
+    this.portraitBlobId,
+    this.createdAt = 0,
+  });
+  bool get isCanon => status == 'canon';
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'kind': kind.name,
+    'name': name,
+    'aliases': aliases,
+    'attributes': attributes,
+    'status': status,
+    'portraitBlobId': portraitBlobId,
+    'createdAt': createdAt,
+  };
+  factory EntityCard.fromJson(Map<String, dynamic> j) => EntityCard(
+    id: j['id'],
+    workId: j['workId'],
+    kind: parseEntityKind(j['kind'] as String? ?? 'character'),
+    name: j['name'] ?? '',
+    aliases: (j['aliases'] as List? ?? const []).map((e) => e as String).toList(),
+    attributes: Map<String, String>.from(j['attributes'] as Map? ?? {}),
+    status: j['status'] ?? 'draft',
+    portraitBlobId: j['portraitBlobId'] as String?,
+    createdAt: j['createdAt'] ?? 0,
+  );
+}
+
+/// 插图：经锚点挂到章节段落（paraIndex 为空表示章节封面位）。
+class Illustration {
+  final String id, workId, prompt, providerId, model, blobId, status, chapterId;
+  final int? paraIndex;
+  final List<String> entityCardIds;
+  final int createdAt;
+  const Illustration({
+    required this.id,
+    required this.workId,
+    required this.prompt,
+    required this.providerId,
+    required this.model,
+    required this.blobId,
+    required this.chapterId,
+    this.paraIndex,
+    this.status = 'draft',
+    this.entityCardIds = const [],
+    this.createdAt = 0,
+  });
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'prompt': prompt,
+    'providerId': providerId,
+    'model': model,
+    'blobId': blobId,
+    'chapterId': chapterId,
+    if (paraIndex != null) 'paraIndex': paraIndex,
+    'status': status,
+    'entityCardIds': entityCardIds,
+    'createdAt': createdAt,
+  };
+  factory Illustration.fromJson(Map<String, dynamic> j) => Illustration(
+    id: j['id'],
+    workId: j['workId'],
+    prompt: j['prompt'] ?? '',
+    providerId: j['providerId'] ?? '',
+    model: j['model'] ?? '',
+    blobId: j['blobId'] ?? '',
+    chapterId: j['chapterId'] ?? '',
+    paraIndex: j['paraIndex'] as int?,
+    status: j['status'] ?? 'draft',
+    entityCardIds: (j['entityCardIds'] as List? ?? const []).map((e) => e as String).toList(),
+    createdAt: j['createdAt'] ?? 0,
+  );
+}
+
 class BlobRec {
   final String id, workId, kind, mime, sha256, storageKey;
   final int byteSize;
@@ -387,6 +493,8 @@ class BundleData {
   final List<AgentRun> runs;
   final List<ToolCall> toolCalls;
   final List<Revision> revisions;
+  final List<EntityCard> entityCards;
+  final List<Illustration> illustrations;
   const BundleData({
     required this.work,
     this.chapters = const [],
@@ -398,6 +506,8 @@ class BundleData {
     this.runs = const [],
     this.toolCalls = const [],
     this.revisions = const [],
+    this.entityCards = const [],
+    this.illustrations = const [],
   });
   Map<String, dynamic> toJson() => {
     'work': work.toJson(),
@@ -410,6 +520,8 @@ class BundleData {
     'runs': runs.map((x) => x.toJson()).toList(),
     'toolCalls': toolCalls.map((x) => x.toJson()).toList(),
     'revisions': revisions.map((x) => x.toJson()).toList(),
+    'entityCards': entityCards.map((x) => x.toJson()).toList(),
+    'illustrations': illustrations.map((x) => x.toJson()).toList(),
   };
 }
 

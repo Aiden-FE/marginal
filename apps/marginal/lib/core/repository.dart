@@ -29,6 +29,12 @@ abstract class Repository {
   Future<void> updateProposal(Proposal value);
   Future<List<Revision>> listRevisions(String workId);
   Future<void> putRevision(Revision value);
+  Future<List<EntityCard>> listEntityCards(String workId);
+  Future<void> putEntityCard(EntityCard value);
+  Future<void> deleteEntityCard(String id);
+  Future<List<Illustration>> listIllustrations(String workId);
+  Future<void> putIllustration(Illustration value);
+  Future<void> deleteIllustration(String id);
   Future<List<AgentRun>> listAgentRuns(String workId);
   Future<void> putAgentRun(AgentRun value);
   Future<List<ToolCall>> listToolCalls(String runId);
