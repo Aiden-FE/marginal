@@ -646,6 +646,75 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  // ---- A 方案：章节导航、进度拖动与 AI 快捷入口 ----
+
+  Future<void> _prevChapter() async {
+    if (_index > 0) await _open(_chapters, _index - 1);
+  }
+
+  Future<void> _nextChapter() async {
+    if (_index + 1 < _chapters.length) {
+      await _open(_chapters, _index + 1);
+    }
+  }
+
+  void _jumpToRatio(double value) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.maxScrollExtent <= 0) return;
+    final ratio = value.clamp(0.0, 1.0).toDouble();
+    _scrollController.jumpTo(
+      prefs.scrollTopForRatio(
+        ratio,
+        position.maxScrollExtent + position.viewportDimension,
+        position.viewportDimension,
+      ),
+    );
+    _liveRatio = ratio;
+    setState(() {});
+    _schedulePositionSave();
+  }
+
+  Future<void> _showAiMenu() async {
+    final hasGlobalEntries =
+        widget.onOpenEntities != null || widget.onOpenIllustrations != null;
+    final hasParagraphIllustration =
+        widget.onIllustrateParagraphAt != null ||
+        widget.onIllustrateParagraph != null;
+    if (!hasGlobalEntries && !hasParagraphIllustration) {
+      _snack('请先在设置中配置 AI 供应商，再使用 AI 功能');
+      return;
+    }
+    await _showSheet(
+      (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.onOpenEntities != null)
+              ListTile(
+                leading: const Icon(Icons.face_outlined),
+                title: const Text('实体卡'),
+                onTap: () => widget.onOpenEntities!(context),
+              ),
+            if (widget.onOpenIllustrations != null)
+              ListTile(
+                leading: const Icon(Icons.image_outlined),
+                title: const Text('插图'),
+                onTap: () => widget.onOpenIllustrations!(context),
+              ),
+            if (hasParagraphIllustration)
+              const ListTile(
+                enabled: false,
+                leading: Icon(Icons.auto_awesome_outlined),
+                title: Text('AI 插图'),
+                subtitle: Text('长按正文段落后选择 AI 插图'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ---- UI ----
 
   @override
@@ -668,6 +737,8 @@ class _ReaderPageState extends State<ReaderPage> {
                   ),
           ),
           if (!_loading && _chapters.isNotEmpty)
+            _buildHiddenProgress(palette),
+          if (!_loading && _chapters.isNotEmpty)
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
             _buildBottomChrome(context, palette),
@@ -687,7 +758,7 @@ class _ReaderPageState extends State<ReaderPage> {
           24,
           MediaQuery.paddingOf(context).top + 16,
           24,
-          MediaQuery.paddingOf(context).bottom + 96,
+          MediaQuery.paddingOf(context).bottom + 132,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,6 +814,27 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
+  Widget _buildHiddenProgress(ReaderPalette palette) {
+    return Positioned(
+      key: const Key('reader-hidden-progress'),
+      top: MediaQuery.paddingOf(context).top + 8,
+      right: 16,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: _chromeVisible ? 0 : 1,
+          duration: _chromeDuration,
+          child: Text(
+            '${(_liveRatio * 100).round()}%',
+            style: TextStyle(
+              fontSize: 11,
+              color: palette.foreground.withValues(alpha: .55),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
     final bookmarked = _isBookmarked(_currentChapter!.id);
@@ -772,104 +864,53 @@ class _ReaderPageState extends State<ReaderPage> {
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                     Expanded(
-                      child: Text(
-                        widget.work.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: MarginalTheme.serif.copyWith(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: foreground,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.work.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: MarginalTheme.serif.copyWith(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: foreground,
+                            ),
+                          ),
+                          Text(
+                            '第 ${_index + 1}/${_chapters.length} 章 · ${_currentChapter!.title}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: foreground.withValues(alpha: .65),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    _TopAction(
+                    IconButton(
                       key: const Key('reader-chapter-favorite'),
-                      label: bookmarked ? '已收藏' : '收藏本章',
-                      color: bookmarked ? palette.accent : foreground,
-                      onTap: _toggleChapterBookmark,
-                    ),
-                    _TopAction(
-                      label: '摘录',
-                      color: foreground,
-                      onTap: _showFavorites,
-                    ),
-                    _TopAction(
-                      key: const Key('reader-open-toc'),
-                      label: '目录',
-                      color: foreground,
-                      onTap: _showChapterSheet,
-                    ),
-                    _TopAction(
-                      label: '设置',
-                      color: foreground,
-                      onTap: _showSettings,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomChrome(BuildContext context, ReaderPalette palette) {
-    final foreground = palette.foreground;
-    return Positioned(
-      key: const Key('reader-bottom-chrome'),
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        ignoring: !_chromeVisible,
-        child: AnimatedSlide(
-          offset: _chromeVisible ? Offset.zero : const Offset(0, 1),
-          duration: _chromeDuration,
-          child: AnimatedOpacity(
-            opacity: _chromeVisible ? 1 : 0,
-            duration: _chromeDuration,
-            child: Material(
-              color: palette.chrome,
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  children: [
-                    TextButton(
-                      onPressed: _index > 0
-                          ? () => _open(_chapters, _index - 1)
-                          : null,
-                      child: Text(
-                        '上一章',
-                        style: TextStyle(fontSize: 13, color: foreground),
+                      tooltip: bookmarked ? '已收藏' : '收藏本章',
+                      icon: Icon(
+                        bookmarked ? Icons.bookmark : Icons.bookmark_border,
+                        color: bookmarked ? palette.accent : foreground,
                       ),
+                      onPressed: _toggleChapterBookmark,
                     ),
-                    Expanded(
-                      child: Text(
-                        '第 ${_index + 1}/${_chapters.length} 章 · ${(_liveRatio * 100).round()}%',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: foreground),
+                    IconButton(
+                      key: const Key('reader-theme-toggle'),
+                      tooltip: _theme == ReaderTheme.dark ? '切换纸色' : '切换夜间',
+                      icon: Icon(
+                        _theme == ReaderTheme.dark
+                            ? Icons.light_mode
+                            : Icons.dark_mode,
+                        color: foreground,
                       ),
-                    ),
-                    TextButton(
-                      onPressed: _toggleAuto,
-                      child: Text(
-                        _autoRunning ? '停止自动' : '自动阅读',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: _autoRunning ? palette.accent : foreground,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _index + 1 < _chapters.length
-                          ? () => _open(_chapters, _index + 1)
-                          : null,
-                      child: Text(
-                        '下一章',
-                        style: TextStyle(fontSize: 13, color: foreground),
+                      onPressed: () => _setTheme(
+                        _theme == ReaderTheme.dark
+                            ? ReaderTheme.paper
+                            : ReaderTheme.dark,
                       ),
                     ),
                   ],
@@ -898,31 +939,168 @@ class _ReaderPageState extends State<ReaderPage> {
       ),
     );
   }
+
+  Widget _buildBottomChrome(BuildContext context, ReaderPalette palette) {
+    final foreground = palette.foreground;
+    final canScrub =
+        _scrollController.hasClients &&
+        _scrollController.position.maxScrollExtent > 0;
+    final borderColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white10
+        : MarginalColors.line;
+    return Positioned(
+      key: const Key('reader-bottom-chrome'),
+      left: 16,
+      right: 16,
+      bottom: 12,
+      child: IgnorePointer(
+        ignoring: !_chromeVisible,
+        child: AnimatedSlide(
+          offset: _chromeVisible ? Offset.zero : const Offset(0, 1.6),
+          duration: _chromeDuration,
+          child: AnimatedOpacity(
+            opacity: _chromeVisible ? 1 : 0,
+            duration: _chromeDuration,
+            child: Material(
+              color: palette.background,
+              elevation: 10,
+              shadowColor: Colors.black26,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: borderColor),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            key: const Key('reader-prev-chapter'),
+                            tooltip: '上一章',
+                            icon: Icon(Icons.chevron_left, color: foreground),
+                            onPressed: _index > 0 ? _prevChapter : null,
+                          ),
+                          Text(
+                            '${(_liveRatio * 100).round()}%',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: foreground.withValues(alpha: .65),
+                            ),
+                          ),
+                          Expanded(
+                            child: Slider(
+                              key: const Key('reader-progress-slider'),
+                              value: _liveRatio.clamp(0.0, 1.0).toDouble(),
+                              activeColor: palette.accent,
+                              onChanged: canScrub ? _jumpToRatio : null,
+                            ),
+                          ),
+                          IconButton(
+                            key: const Key('reader-next-chapter'),
+                            tooltip: '下一章',
+                            icon: Icon(Icons.chevron_right, color: foreground),
+                            onPressed: _index + 1 < _chapters.length
+                                ? _nextChapter
+                                : null,
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _CardAction(
+                            key: const Key('reader-open-toc'),
+                            icon: Icons.list_alt,
+                            label: '目录',
+                            color: foreground,
+                            onTap: _showChapterSheet,
+                          ),
+                          _CardAction(
+                            key: const Key('reader-open-favorites'),
+                            icon: Icons.star_border,
+                            label: '摘录',
+                            color: foreground,
+                            onTap: _showFavorites,
+                          ),
+                          _CardAction(
+                            key: const Key('reader-auto-toggle'),
+                            icon: _autoRunning
+                                ? Icons.pause_circle_outline
+                                : Icons.play_circle_outline,
+                            label: _autoRunning ? '停止自动' : '自动阅读',
+                            color: _autoRunning ? palette.accent : foreground,
+                            onTap: _toggleAuto,
+                          ),
+                          _CardAction(
+                            key: const Key('reader-ai-menu'),
+                            icon: Icons.auto_awesome_outlined,
+                            label: 'AI',
+                            color: foreground,
+                            onTap: _showAiMenu,
+                          ),
+                          _CardAction(
+                            key: const Key('reader-open-settings'),
+                            icon: Icons.text_fields,
+                            label: '排版',
+                            color: foreground,
+                            onTap: _showSettings,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// 顶栏文字动作按钮：Safari 上图标字体可能不渲染，文字保证可见。
-class _TopAction extends StatelessWidget {
-  const _TopAction({
+/// A 方案悬浮卡片中的带标签动作按钮。
+class _CardAction extends StatelessWidget {
+  const _CardAction({
     super.key,
+    required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
   });
 
+  final IconData icon;
   final String label;
   final Color color;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => TextButton(
-    onPressed: onTap,
-    style: TextButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      minimumSize: const Size(0, 44),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color),
+  Widget build(BuildContext context) => InkResponse(
+    onTap: onTap,
+    radius: 30,
+    child: SizedBox(
+      width: 58,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 22, color: color),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }

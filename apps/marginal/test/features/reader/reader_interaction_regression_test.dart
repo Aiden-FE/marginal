@@ -221,9 +221,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    for (final label in ['收藏本章', '摘录', '目录', '设置', '自动阅读']) {
+    for (final label in ['摘录', '目录', '自动阅读', '排版', 'AI']) {
       expect(find.text(label), findsOneWidget, reason: '$label 应在唤出菜单后可见');
     }
     expect(find.text('自动阅读').hitTestable(), findsOneWidget);
+    expect(find.byKey(const Key('reader-chapter-favorite')).hitTestable(), findsOneWidget);
   });
 }

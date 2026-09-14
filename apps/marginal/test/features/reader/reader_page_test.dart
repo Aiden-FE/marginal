@@ -66,12 +66,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('底栏章节导航并记录当前章', (tester) async {
+  testWidgets('悬浮卡片章节导航并记录当前章', (tester) async {
     final services = await seed();
     await pumpReader(tester, services);
     expect(find.textContaining('第 1/2 章'), findsOneWidget);
 
-    await tester.tap(find.text('下一章'));
+    await tester.tap(find.byKey(const Key('reader-next-chapter')));
     await tester.pumpAndSettle();
     expect(find.textContaining('第 2/2 章'), findsOneWidget);
     expect(find.text('第三段。'), findsOneWidget);
@@ -84,14 +84,14 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.text('收藏本章'));
+    await tester.tap(find.byKey(const Key('reader-chapter-favorite')));
     await tester.pumpAndSettle();
     var saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), hasLength(1));
-    expect(find.text('已收藏'), findsOneWidget);
+    expect(find.byIcon(Icons.bookmark), findsOneWidget);
 
     await afterSnackBar(tester);
-    await tester.tap(find.text('已收藏'));
+    await tester.tap(find.byKey(const Key('reader-chapter-favorite')));
     await tester.pumpAndSettle();
     saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), isEmpty);
@@ -102,7 +102,7 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.text('设置'));
+    await tester.tap(find.byKey(const Key('reader-open-settings')));
     await tester.pumpAndSettle();
     final rect = tester.getRect(find.byKey(const Key('font-size-slider')));
     await tester.tapAt(Offset(rect.left + rect.width * 0.95, rect.center.dy));
@@ -119,7 +119,7 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.text('设置'));
+    await tester.tap(find.byKey(const Key('reader-open-settings')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('theme-dark')));
     await tester.pump();

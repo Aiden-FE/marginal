@@ -160,7 +160,7 @@ void main() {
     expect(favorites.single['text'], '这是第二段，出现了转折。');
   });
 
-  testWidgets('底栏展示实时阅读进度百分比', (tester) async {
+  testWidgets('唤出后展示实时阅读进度与章信息', (tester) async {
     final services = await seed();
     await openReader(tester, services);
 
@@ -171,8 +171,9 @@ void main() {
     final services = await seed();
     await openReader(tester, services);
 
-    expect(find.text('收藏本章').hitTestable(), findsOneWidget);
-    await tester.tap(find.text('收藏本章'));
+    const favorite = Key('reader-chapter-favorite');
+    expect(find.byKey(favorite).hitTestable(), findsOneWidget);
+    await tester.tap(find.byKey(favorite));
     await tester.pumpAndSettle();
     final saved = await services.repository.getWork('w');
     expect(
