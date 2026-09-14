@@ -48,16 +48,51 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
   }
 
   Future<void> _approveBatch() async {
-    final batch = _items.where(
-      (p) =>
-          _selected.contains(p.id) &&
-          p.status == 'pending' &&
-          p.type == 'text_repair',
+    final batch = _items
+        .where(
+          (p) =>
+              _selected.contains(p.id) &&
+              p.status == 'pending' &&
+              p.type == 'text_repair',
+        )
+        .toList();
+    if (batch.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认批量批准？'),
+        content: Text('将批准 ${batch.length} 条正文修复提案，正文会生成新的修订记录。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认批准'),
+          ),
+        ],
+      ),
     );
+    if (confirmed != true) return;
+    var approved = 0;
     for (final p in batch) {
-      await _service.approve(p);
+      try {
+        await _service.approve(p);
+        approved++;
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('提案 ${p.id} 批准失败：$error')));
+        }
+      }
     }
-    if (mounted) setState(() => _selected.clear());
+    if (mounted) {
+      setState(() => _selected.clear());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已批准 $approved/${batch.length} 条提案')),
+      );
+    }
     await _load();
   }
 

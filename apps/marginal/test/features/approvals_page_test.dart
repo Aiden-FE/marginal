@@ -91,6 +91,9 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('批量批准安全类型'));
     await tester.pumpAndSettle();
+    expect(find.text('确认批量批准？'), findsOneWidget);
+    await tester.tap(find.text('确认批准'));
+    await tester.pumpAndSettle();
     final statuses = await services.repository.listProposals('w');
     expect(statuses.firstWhere((p) => p.id == 'p1').status, 'approved');
     expect(statuses.firstWhere((p) => p.id == 'p2').status, 'pending');

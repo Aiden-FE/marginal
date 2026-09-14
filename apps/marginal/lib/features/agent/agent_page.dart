@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../app/agent_execution_service.dart';
 import '../../app/ids.dart';
+import '../../app/marginal_theme.dart';
 import '../../app/platform_services.dart';
+import '../../app/provider_store.dart';
 import '../../app/reading_tools.dart';
 import '../../core/agent/agent_events.dart';
 import '../../core/agent/agent_runtime.dart';
 import '../../core/provider/demo_transport.dart';
+import '../../core/provider/openai_compatible_transport.dart';
 import '../../core/provider/provider_transport.dart';
 import '../../core/types.dart';
 
@@ -27,15 +30,35 @@ class _AgentPageState extends State<AgentPage> {
   final _input = TextEditingController();
   final _events = <String>[];
   bool _waitingApproval = false;
+  late final bool _demoMode;
+
+  ProviderEntry? get _configuredProvider {
+    for (final provider in widget.services.providerStore.providers) {
+      if (provider.id != 'demo' &&
+          provider.baseUrl.trim().isNotEmpty &&
+          provider.model.trim().isNotEmpty) {
+        return provider;
+      }
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
-    final transport = DemoTransport(
-      fallback: (request) async => ChatResponse.text(
-        '演示 Agent 已读取你的请求：${request.messages.last.content ?? ''}',
-      ),
-    );
+    final configured = _configuredProvider;
+    _demoMode = configured == null;
+    final transport = configured == null
+        ? DemoTransport(
+            fallback: (request) async => ChatResponse.text(
+              '演示 Agent 已读取你的请求：${request.messages.last.content ?? ''}',
+            ),
+          )
+        : OpenAICompatibleTransport(
+            baseUrl: configured.baseUrl,
+            apiKey: configured.apiKey,
+            model: configured.model,
+          );
     final runId = newId('run');
     _runtime = AgentRuntime(
       transport: transport,
@@ -79,7 +102,25 @@ class _AgentPageState extends State<AgentPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text('Agent · ${widget.work.title}')),
+    appBar: AppBar(
+      title: Text('Agent · ${widget.work.title}'),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(24),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _demoMode ? '演示模式 · 未配置真实 provider' : '真实 provider · 写入仍需批准',
+              style: TextStyle(
+                fontSize: 11,
+                color: _demoMode ? MarginalColors.muted : MarginalColors.ok,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
     body: Column(
       children: [
         Expanded(
