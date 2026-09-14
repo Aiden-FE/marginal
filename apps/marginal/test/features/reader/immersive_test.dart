@@ -77,7 +77,7 @@ void main() {
   testWidgets('滚动等交互为 chrome 续期', (tester) async {
     await pumpReader(tester);
     await tester.drag(
-      find.byType(SingleChildScrollView),
+      find.byKey(const Key('reader-scroll-view')),
       const Offset(0, -120),
     );
     await tester.pumpAndSettle();

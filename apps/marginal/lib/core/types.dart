@@ -123,12 +123,13 @@ class Prompt {
   );
 }
 
-enum ProposalKind { textRepair, coverage, delete }
+enum ProposalKind { textRepair, chapterSplit, coverage, delete }
 
 enum ProposalStatus { pending, approved, rejected, expired, rolledBack }
 
 ProposalKind parseProposalKind(String value) => switch (value) {
   'text_repair' => ProposalKind.textRepair,
+  'chapter_split' => ProposalKind.chapterSplit,
   'coverage' => ProposalKind.coverage,
   'delete' => ProposalKind.delete,
   _ => throw FormatException('unknown proposal kind: $value'),
@@ -162,6 +163,39 @@ class TextRepairPayload {
       return p;
     }).toList();
     return TextRepairPayload(chapterId: j['chapterId'], patches: patches);
+  }
+}
+
+class ChapterSplitPayload {
+  final String sourceChapterId;
+  final List<Map<String, dynamic>> chapters;
+
+  const ChapterSplitPayload({
+    required this.sourceChapterId,
+    required this.chapters,
+  });
+
+  factory ChapterSplitPayload.fromJson(Map<String, dynamic> j) {
+    if (j['sourceChapterId'] is! String ||
+        (j['sourceChapterId'] as String).isEmpty ||
+        j['chapters'] is! List ||
+        (j['chapters'] as List).isEmpty) {
+      throw const FormatException('invalid chapter_split payload');
+    }
+    final chapters = (j['chapters'] as List).map((raw) {
+      if (raw is! Map) throw const FormatException('invalid split chapter');
+      final chapter = Map<String, dynamic>.from(raw);
+      if (chapter['title'] is! String ||
+          chapter['text'] is! String ||
+          (chapter['title'] as String).trim().isEmpty) {
+        throw const FormatException('invalid split chapter');
+      }
+      return chapter;
+    }).toList();
+    return ChapterSplitPayload(
+      sourceChapterId: j['sourceChapterId'] as String,
+      chapters: chapters,
+    );
   }
 }
 

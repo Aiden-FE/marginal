@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/marginal_theme.dart';
@@ -13,6 +14,7 @@ import '../../app/platform_services.dart';
 import '../../app/poster_capture.dart';
 import '../../core/types.dart';
 import 'reader_chapter_sheet.dart';
+import 'reader_chunks.dart';
 import 'reader_favorites_sheet.dart';
 import 'reader_paragraph_sheet.dart';
 import 'reader_poster_sheet.dart';
@@ -86,7 +88,9 @@ class _ReaderPageState extends State<ReaderPage>
 
   List<Chapter> _chapters = const [];
   List<String> _paragraphs = const [];
+  List<ReaderChunk> _chunks = const [];
   Map<int, Uint8List> _images = {};
+  static const int _chunkBudget = 4000;
   int _index = 0;
   bool _loading = true;
   double _liveRatio = 0;
@@ -222,6 +226,7 @@ class _ReaderPageState extends State<ReaderPage>
       _chapters = chapters;
       _index = index;
       _paragraphs = _splitParagraphs(projection.text);
+      _chunks = buildReaderChunks(_paragraphs, maxCodeUnits: _chunkBudget);
       _images = Map.of(projection.images);
       _paraKeys.clear();
       _loading = false;
@@ -521,6 +526,15 @@ class _ReaderPageState extends State<ReaderPage>
     final index = _chapters.indexWhere((c) => c.id == favorite.chapterId);
     if (index < 0) return;
     if (index != _index) await _open(_chapters, index);
+    final target = _chunks.indexWhere(
+      (chunk) => chunk.paraIndex == favorite.paraIndex,
+    );
+    if (target < 0 || !_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      _estimatedChunkOffset(target),
+      duration: _chromeDuration,
+      curve: Curves.easeOutCubic,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = _paraKey(favorite.paraIndex).currentContext;
       if (context == null) return;
@@ -530,6 +544,12 @@ class _ReaderPageState extends State<ReaderPage>
         alignment: 0.08,
       );
     });
+  }
+
+  double _estimatedChunkOffset(int target) {
+    if (!_scrollController.hasClients || _chunks.isEmpty) return 0;
+    final extent = _scrollController.position.maxScrollExtent;
+    return (extent * target / _chunks.length).clamp(0.0, extent);
   }
 
   // ---- 章节抽屉 / 书签 ----
@@ -868,63 +888,54 @@ class _ReaderPageState extends State<ReaderPage>
       key: const Key('reader-chrome-toggle-zone'),
       behavior: HitTestBehavior.opaque,
       onTapUp: _handleReadingTapUp,
-      child: SingleChildScrollView(
+      child: ListView.builder(
+        key: const Key('reader-scroll-view'),
         controller: _scrollController,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
         padding: EdgeInsets.fromLTRB(
           24,
           MediaQuery.paddingOf(context).top + 16,
           24,
           MediaQuery.paddingOf(context).bottom + 132,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < _paragraphs.length; i++) ...[
-              _paragraphItem(i, palette),
-              if (_images.containsKey(i))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Image.memory(
-                    _images[i]!,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
-            ],
-          ],
-        ),
+        itemCount: _chunks.length,
+        itemBuilder: (context, index) => _chunkItem(_chunks[index], palette),
       ),
     );
   }
 
-  Widget _paragraphItem(int i, ReaderPalette palette) {
+  Widget _chunkItem(ReaderChunk chunk, ReaderPalette palette) {
     final textStyle = MarginalTheme.serif.copyWith(
       fontSize: _fontSize,
       height: _lineHeight,
       color: palette.foreground,
     );
     return Padding(
-      // 段落间距放在交互区之外：点击段落间隙收起/唤出 chrome。
       padding: const EdgeInsets.only(bottom: 16),
       child: GestureDetector(
-        key: _paraKey(i),
+        key: chunk.start == 0 ? _paraKey(chunk.paraIndex) : null,
         behavior: HitTestBehavior.opaque,
-        // 段落不占用短按：点击位置由三分热区决定行为，长按才出操作面板。
-        onLongPress: () => _showParagraphSheet(i),
-        child: Text.rich(
-          TextSpan(
-            text: _paragraphs[i],
-            children: [
-              if (_isFavorite(i))
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: Icon(Icons.star, size: _fontSize, color: _gold),
-                  ),
+        onLongPress: chunk.start == 0
+            ? () => _showParagraphSheet(chunk.paraIndex)
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(chunk.text, style: textStyle),
+            if (chunk.isLastFragment && _isFavorite(chunk.paraIndex))
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Icon(Icons.star, size: _fontSize, color: _gold),
+              ),
+            if (chunk.isLastFragment && _images.containsKey(chunk.paraIndex))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Image.memory(
+                  _images[chunk.paraIndex]!,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
-            ],
-          ),
-          style: textStyle,
+              ),
+          ],
         ),
       ),
     );

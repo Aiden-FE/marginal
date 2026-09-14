@@ -1,0 +1,3 @@
+# Virtualize long mobile chapters
+
+Marginal treats reliable reading of a single chapter up to 200,000 characters on a 390×844 mobile viewport as a baseline requirement. The vertical reader will therefore render long chapters through paragraph-aware chunks or virtualization rather than constructing the entire chapter body at once. This is deliberately preferred over blocking the reader, showing a performance warning, or silently rewriting chapter boundaries: reading remains available, while any structural repair stays an explicit proposal subject to user confirmation.

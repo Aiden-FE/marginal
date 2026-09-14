@@ -45,6 +45,48 @@ void main() {
     expect((await repo.listProposals('w')).single.status, 'pending');
   });
 
+  test('non-pending proposals cannot be approved or rejected again', () async {
+    final repo = MemoryRepository();
+    await repo.putWork(const Work(id: 'w', title: 'w'));
+    final p = Proposal(
+      id: 'p',
+      workId: 'w',
+      type: 'coverage',
+      payload: '{}',
+      status: 'approved',
+    );
+    await repo.putProposal(p);
+    final service = ApprovalService(repo);
+    expect(() => service.approve(p), throwsStateError);
+    expect(() => service.reject(p), throwsStateError);
+    expect((await repo.listProposals('w')).single.status, 'approved');
+  });
+
+  test('mismatched repair patch cannot be silently approved', () async {
+    final repo = MemoryRepository();
+    await repo.putWork(const Work(id: 'w', title: 'w'));
+    await repo.putChapter(
+      'w',
+      const Chapter(id: 'c', workId: 'w', idx: 0, title: 'c'),
+      'actual',
+    );
+    final p = Proposal(
+      id: 'p',
+      workId: 'w',
+      type: 'text_repair',
+      payload: jsonEncode({
+        'chapterId': 'c',
+        'patches': [
+          {'paraIndex': 0, 'original': 'missing', 'replacement': 'new'},
+        ],
+      }),
+    );
+    await repo.putProposal(p);
+    expect(() => ApprovalService(repo).approve(p), throwsStateError);
+    expect(await repo.getChapterText('c'), 'actual');
+    expect((await repo.listProposals('w')).single.status, 'pending');
+  });
+
   test('pending proposals expire', () async {
     final repo = MemoryRepository();
     await repo.putWork(const Work(id: 'w', title: 'w'));

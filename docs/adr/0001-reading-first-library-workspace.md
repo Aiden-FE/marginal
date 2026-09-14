@@ -1,0 +1,3 @@
+# Reading-first library workspace
+
+Marginal adopts a mobile-first `书库 / AI / 我的` navigation structure. The 书库 Tab is the default reading workspace: it shows a real continue-reading entry and real书稿 data, supports finding and managing书稿, and opens the vertical-scroll reader directly. AI work is isolated in the AI Tab and accessed from the current书稿的书稿工具菜单, so provider state, repair batches, proposals, Agent sessions, entity cards, and illustration work cannot displace the core reading flow. This decision deliberately favors a reliable TXT + 全书包 reading loop over adding EPUB, fabricated reading statistics, pagination, or full-text search in the first implementation phase.
