@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/approval_service.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/platform_services.dart';
 import '../../app/provider_store.dart';
@@ -20,6 +21,8 @@ class AiWorkspacePage extends StatefulWidget {
 class _AiWorkspacePageState extends State<AiWorkspacePage> {
   List<Work> _works = const [];
   Map<String, int> _pendingByWork = const {};
+  Map<String, List<Proposal>> _proposalsByWork = const {};
+  Map<String, List<Revision>> _revisionsByWork = const {};
   bool _loading = true;
 
   @override
@@ -31,15 +34,26 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
   Future<void> _load() async {
     final works = await widget.services.repository.listWorks();
     final pending = <String, int>{};
+    final proposals = <String, List<Proposal>>{};
+    final revisions = <String, List<Revision>>{};
     for (final work in works) {
-      pending[work.id] = (await widget.services.repository.listProposals(
+      final workProposals = await widget.services.repository.listProposals(
         work.id,
-      )).where((proposal) => proposal.status == 'pending').length;
+      );
+      pending[work.id] = workProposals
+          .where((proposal) => proposal.status == 'pending')
+          .length;
+      proposals[work.id] = workProposals;
+      revisions[work.id] = await widget.services.repository.listRevisions(
+        work.id,
+      );
     }
     if (!mounted) return;
     setState(() {
       _works = works;
       _pendingByWork = pending;
+      _proposalsByWork = proposals;
+      _revisionsByWork = revisions;
       _loading = false;
     });
   }
@@ -91,6 +105,32 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
     await _openWork(work, approvals: approvals);
   }
 
+  Future<void> _rollbackRun(Work work, String runId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('回滚这一批修订？'),
+        content: const Text('将恢复该批次已批准的正文或章节结构，且不可自动合并其他后续变更。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认回滚'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final rolled = await ApprovalService(widget.services.repository)
+        .rollbackRun(runId);
+    if (!mounted) return;
+    _snack(rolled.isEmpty ? '该批次没有可回滚的修订' : '已回滚 ${rolled.length} 条修订');
+    await _load();
+  }
+
   Future<void> _openWork(Work work, {required bool approvals}) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -100,6 +140,68 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
       ),
     );
     _load();
+  }
+
+  List<Widget> _buildRunCards() {
+    final cards = <Widget>[];
+    for (final work in _works) {
+      final proposals = _proposalsByWork[work.id] ?? const <Proposal>[];
+      final revisions = _revisionsByWork[work.id] ?? const <Revision>[];
+      final runs = proposals
+          .map((proposal) => proposal.runId)
+          .where((runId) => runId.isNotEmpty)
+          .toSet();
+      for (final runId in runs) {
+        final batch = proposals
+            .where((proposal) => proposal.runId == runId)
+            .toList();
+        final approved = batch
+            .where((proposal) => proposal.status == 'approved')
+            .length;
+        final pending = batch
+            .where((proposal) => proposal.status == 'pending')
+            .length;
+        final canRollback =
+            approved > 0 &&
+            batch.any(
+              (proposal) => revisions.any(
+                (revision) => revision.proposalId == proposal.id,
+              ),
+            );
+        cards.add(
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.history_rounded,
+                color: MarginalColors.accent,
+              ),
+              title: Text('${work.title} · $runId'),
+              subtitle: Text(
+                '提案 ${batch.length} · 已批准 $approved · 待处理 $pending',
+              ),
+              trailing: canRollback
+                  ? TextButton(
+                      onPressed: () => _rollbackRun(work, runId),
+                      child: const Text('回滚'),
+                    )
+                  : null,
+              onTap: () => _openWork(work, approvals: true),
+            ),
+          ),
+        );
+      }
+    }
+    return cards.isEmpty
+        ? [
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.inbox_outlined),
+                title: Text('还没有修复批次'),
+                subtitle: Text('从书稿工具菜单发起 AI 修复后，批次会显示在这里。'),
+              ),
+            ),
+          ]
+        : cards;
   }
 
   void _snack(String message) {
@@ -184,6 +286,17 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
                     title: '段落插图',
                     detail: '以正典实体和段落锚点保持一致性',
                   ),
+                  const SizedBox(height: 18),
+                  Text(
+                    '修复批次',
+                    style: MarginalTheme.serif.copyWith(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      color: MarginalColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._buildRunCards(),
                   const SizedBox(height: 18),
                   Text(
                     '当前书稿',
