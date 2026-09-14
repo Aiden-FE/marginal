@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 段落交互 action sheet —— 收藏 / 复制 / 分享文字 / 分享海报 / AI 插图。
+/// 段落交互 action sheet —— 收藏 / 复制 / 分享海报 / AI 插图。
 ///
 /// 点击任意动作先收起面板，再由 ReaderPage 执行回调。
 class ReaderParagraphSheet extends StatelessWidget {
@@ -10,7 +10,6 @@ class ReaderParagraphSheet extends StatelessWidget {
     required this.isFavorite,
     this.onToggleFavorite,
     this.onCopy,
-    this.onShareText,
     this.onPoster,
     this.onIllustrate,
   });
@@ -19,7 +18,6 @@ class ReaderParagraphSheet extends StatelessWidget {
   final bool isFavorite;
   final VoidCallback? onToggleFavorite;
   final VoidCallback? onCopy;
-  final VoidCallback? onShareText;
   final VoidCallback? onPoster;
   final VoidCallback? onIllustrate;
 
@@ -63,12 +61,6 @@ class ReaderParagraphSheet extends StatelessWidget {
               leading: const Icon(Icons.copy_all_outlined),
               title: const Text('复制'),
               onTap: () => _run(context, onCopy),
-            ),
-            ListTile(
-              key: const Key('action-share-text'),
-              leading: const Icon(Icons.ios_share),
-              title: const Text('分享文字'),
-              onTap: () => _run(context, onShareText),
             ),
             ListTile(
               key: const Key('action-poster'),

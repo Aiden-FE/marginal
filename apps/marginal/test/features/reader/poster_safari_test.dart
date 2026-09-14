@@ -76,6 +76,25 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
   });
 
+  testWidgets('空编码器立即进入错误态而不持续 loading', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReaderPosterSheet(
+            workTitle: '书',
+            chapterTitle: '第一章',
+            text: '一段。',
+            shareService: RecordingShareService(),
+            encoder: null,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.textContaining('未配置编码器'), findsAtLeastNWidgets(1));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   testWidgets('海报编码挂起时超时给出错误提示且按钮禁用', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -178,16 +197,9 @@ const fakePng = [
 ];
 
 class RecordingShareService implements ShareService {
-  RecordingShareService({this.onImage, this.onText});
+  RecordingShareService({this.onImage});
   final Future<bool> Function(dynamic file)? onImage;
-  final Future<bool> Function(String text)? onText;
-  final texts = <String>[];
   @override
   Future<bool> shareImage(dynamic file) async =>
       onImage == null ? true : await onImage!(file);
-  @override
-  Future<bool> shareText(String text) async {
-    texts.add(text);
-    return onText == null ? true : await onText!(text);
-  }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,7 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
   Uint8List? _readyPng;
   String? _error;
   bool _sharing = false;
+  Timer? _renderTimeoutTimer;
 
   /// Safari 上 PNG 编码可能挂起：超时给出明确错误而不是永远转圈。
 
@@ -51,19 +53,35 @@ class _ReaderPosterSheetState extends State<ReaderPosterSheet> {
   }
 
   Future<void> _render() async {
+    final encode = widget.encoder;
+    if (encode == null) {
+      setState(() => _error = '海报生成失败：未配置编码器');
+      return;
+    }
+    _renderTimeoutTimer = Timer(widget.renderTimeout, () {
+      if (mounted && _readyPng == null) {
+        setState(() => _error = '海报生成失败：编码超时');
+      }
+    });
     try {
-      final encode = widget.encoder;
-      if (encode == null) return;
       final bytes = await encode(
         workTitle: widget.workTitle,
         chapterTitle: widget.chapterTitle,
         text: widget.text,
-      ).timeout(widget.renderTimeout);
-      if (!mounted) return;
+      );
+      _renderTimeoutTimer?.cancel();
+      if (!mounted || _error != null) return;
       setState(() => _readyPng = bytes);
     } catch (e) {
+      _renderTimeoutTimer?.cancel();
       if (mounted) setState(() => _error = '海报生成失败：$e');
     }
+  }
+
+  @override
+  void dispose() {
+    _renderTimeoutTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _shareImage() async {

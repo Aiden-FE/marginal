@@ -39,6 +39,36 @@ void main() {
       expect(scrollTopForRatio(2, 10, 5), 5);
       expect(scrollTopForRatio(0.5, 5, 10), 0);
     });
+
+    test('全书进度按章节正文长度加权', () {
+      expect(
+        workProgressRatio(
+          chapterWeights: const [100, 300],
+          chapterIndex: 1,
+          chapterRatio: 0.5,
+        ),
+        0.625,
+      );
+      expect(
+        workProgressRatio(
+          chapterWeights: const [100, 300],
+          chapterIndex: 0,
+          chapterRatio: 1,
+        ),
+        0.25,
+      );
+    });
+
+    test('全书进度可反解到目标章节与章内比例', () {
+      expect(
+        workProgressTarget(chapterWeights: const [100, 300], workRatio: 0.625),
+        (chapterIndex: 1, chapterRatio: 0.5),
+      );
+      expect(
+        workProgressTarget(chapterWeights: const [100, 300], workRatio: 2),
+        (chapterIndex: 1, chapterRatio: 1),
+      );
+    });
   });
 
   group('阅读位置', () {

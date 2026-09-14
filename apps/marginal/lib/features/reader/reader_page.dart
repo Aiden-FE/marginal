@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,6 +10,7 @@ import '../../app/reader_projection.dart';
 import '../../app/paragraphs.dart';
 import '../../app/share.dart';
 import '../../app/platform_services.dart';
+import '../../app/poster_capture.dart';
 import '../../core/types.dart';
 import 'reader_chapter_sheet.dart';
 import 'reader_favorites_sheet.dart';
@@ -70,7 +72,8 @@ class ReaderPage extends StatefulWidget {
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> {
+class _ReaderPageState extends State<ReaderPage>
+    with SingleTickerProviderStateMixin {
   static const _chromeTimeout = Duration(milliseconds: 3500);
   static const _chromeDuration = Duration(milliseconds: 250);
   static const _chapterDwell = Duration(milliseconds: 1500);
@@ -87,6 +90,7 @@ class _ReaderPageState extends State<ReaderPage> {
   int _index = 0;
   bool _loading = true;
   double _liveRatio = 0;
+  List<int> _chapterWeights = const [];
   late final Map<String, dynamic> _settings = Map<String, dynamic>.of(
     widget.work.settings,
   );
@@ -96,10 +100,11 @@ class _ReaderPageState extends State<ReaderPage> {
   Timer? _chromeTimer;
   int _sheetsOpen = 0;
 
-  // 自动阅读：等速滚动，章末停留 1.5s 切下一章，弹层打开暂停。
+  // 自动阅读：逐帧等速滚动，章末停留 1.5s 切下一章，弹层打开暂停。
   bool _autoRunning = false;
   bool _autoPausedBySheet = false;
-  Timer? _autoTicker;
+  Ticker? _autoTicker;
+  Duration _autoLastElapsed = Duration.zero;
   Timer? _chapterEndTimer;
 
   // 阅读位置：滚动节流 300ms 保存。
@@ -151,6 +156,7 @@ class _ReaderPageState extends State<ReaderPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _autoTicker = createTicker(_onAutoTick);
     _bumpChrome();
     _load();
   }
@@ -158,7 +164,7 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void dispose() {
     _chromeTimer?.cancel();
-    _autoTicker?.cancel();
+    _autoTicker?.dispose();
     _chapterEndTimer?.cancel();
     _positionSaveTimer?.cancel();
     _scrollController.dispose();
@@ -173,6 +179,10 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    _chapterWeights = [
+      for (final chapter in chapters)
+        (await _projectionService.repository.getChapterText(chapter.id)).length,
+    ];
     // 优先恢复上次阅读位置章节；否则用入口指定章节。
     final position = prefs.loadReadingPosition(_settings);
     var index = position == null
@@ -227,6 +237,7 @@ class _ReaderPageState extends State<ReaderPage> {
       } else {
         _scrollController.jumpTo(0);
       }
+      _updateProgress(_scrollController.offset);
     });
   }
 
@@ -306,19 +317,29 @@ class _ReaderPageState extends State<ReaderPage> {
     _chromeTimer?.cancel();
   }
 
+  void _updateProgress(double scrollTop) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final chapterRatio = prefs.scrollRatio(
+      scrollTop,
+      position.maxScrollExtent + position.viewportDimension,
+      position.viewportDimension,
+    );
+    final work = prefs.workProgressRatio(
+      chapterWeights: _chapterWeights,
+      chapterIndex: _index,
+      chapterRatio: chapterRatio,
+    );
+    if ((work - _liveRatio).abs() >= 0.005) {
+      _liveRatio = work;
+      if (mounted) setState(() {});
+    }
+  }
+
   void _onScroll() {
     if (_chromeVisible && !_autoRunning) _bumpChrome();
     if (_scrollController.hasClients) {
-      final p = _scrollController.position;
-      final live = prefs.scrollRatio(
-        _scrollController.offset,
-        p.maxScrollExtent + p.viewportDimension,
-        p.viewportDimension,
-      );
-      if ((live - _liveRatio).abs() >= 0.005) {
-        _liveRatio = live;
-        if (mounted) setState(() {});
-      }
+      _updateProgress(_scrollController.offset);
     }
     _schedulePositionSave();
   }
@@ -396,7 +417,6 @@ class _ReaderPageState extends State<ReaderPage> {
         isFavorite: _isFavorite(paraIndex),
         onToggleFavorite: () => _toggleParagraphFavorite(paraIndex),
         onCopy: () => _copyParagraph(paragraph),
-        onShareText: () => _shareParagraphText(paragraph),
         onPoster: () => _showPosterSheet(paragraph),
         onIllustrate:
             widget.onIllustrateParagraphAt == null &&
@@ -431,15 +451,6 @@ class _ReaderPageState extends State<ReaderPage> {
     _snack('已复制到剪贴板');
   }
 
-  Future<void> _shareParagraphText(String paragraph) async {
-    final ok = await _share.shareText(paragraph);
-    if (!ok) {
-      // Web 或分享不可用：降级为复制 + 提示。
-      await Clipboard.setData(ClipboardData(text: paragraph));
-      _snack('当前环境不支持分享，已复制到剪贴板');
-    }
-  }
-
   Future<void> _showPosterSheet(String paragraph) async {
     final chapter = _currentChapter;
     if (chapter == null) return;
@@ -449,7 +460,7 @@ class _ReaderPageState extends State<ReaderPage> {
         chapterTitle: chapter.title,
         text: paragraph,
         shareService: _share,
-        encoder: widget.onPosterEncoder,
+        encoder: widget.onPosterEncoder ?? renderPosterPng,
       ),
     );
   }
@@ -588,19 +599,23 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _startTicker() {
-    _autoTicker?.cancel();
-    _autoTicker = Timer.periodic(
-      const Duration(milliseconds: 100),
-      (_) => _autoStep(),
-    );
+    _autoTicker?.stop();
+    _autoLastElapsed = Duration.zero;
+    _autoTicker?.start();
   }
 
   void _stopTicker() {
-    _autoTicker?.cancel();
-    _autoTicker = null;
+    _autoTicker?.stop();
+    _autoLastElapsed = Duration.zero;
   }
 
-  void _autoStep() {
+  void _onAutoTick(Duration elapsed) {
+    final delta = elapsed - _autoLastElapsed;
+    _autoLastElapsed = elapsed;
+    _autoStep(delta);
+  }
+
+  void _autoStep(Duration delta) {
     final controller = _scrollController;
     if (!controller.hasClients) return;
     final position = controller.position;
@@ -611,11 +626,10 @@ class _ReaderPageState extends State<ReaderPage> {
       _chapterEndTimer = Timer(_chapterDwell, _autoAdvance);
       return;
     }
+    final deltaPixels = _autoSpeed * delta.inMicroseconds / 1000000;
+    if (deltaPixels <= 0) return;
     controller.jumpTo(
-      (controller.offset + _autoSpeed * 0.1).clamp(
-        0.0,
-        position.maxScrollExtent,
-      ),
+      (controller.offset + deltaPixels).clamp(0.0, position.maxScrollExtent),
     );
   }
 
@@ -658,20 +672,24 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
-  void _jumpToRatio(double value) {
+  Future<void> _jumpToRatio(double value) async {
+    final target = prefs.workProgressTarget(
+      chapterWeights: _chapterWeights,
+      workRatio: value,
+    );
+    if (target.chapterIndex != _index) {
+      await _open(_chapters, target.chapterIndex);
+    }
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    if (position.maxScrollExtent <= 0) return;
-    final ratio = value.clamp(0.0, 1.0).toDouble();
     _scrollController.jumpTo(
       prefs.scrollTopForRatio(
-        ratio,
+        target.chapterRatio,
         position.maxScrollExtent + position.viewportDimension,
         position.viewportDimension,
       ),
     );
-    _liveRatio = ratio;
-    setState(() {});
+    _updateProgress(_scrollController.offset);
     _schedulePositionSave();
   }
 
@@ -736,8 +754,6 @@ class _ReaderPageState extends State<ReaderPage> {
                     child: _buildContent(palette),
                   ),
           ),
-          if (!_loading && _chapters.isNotEmpty)
-            _buildHiddenProgress(palette),
           if (!_loading && _chapters.isNotEmpty)
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
@@ -809,27 +825,6 @@ class _ReaderPageState extends State<ReaderPage> {
             ],
           ),
           style: textStyle,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHiddenProgress(ReaderPalette palette) {
-    return Positioned(
-      key: const Key('reader-hidden-progress'),
-      top: MediaQuery.paddingOf(context).top + 8,
-      right: 16,
-      child: IgnorePointer(
-        child: AnimatedOpacity(
-          opacity: _chromeVisible ? 0 : 1,
-          duration: _chromeDuration,
-          child: Text(
-            '${(_liveRatio * 100).round()}%',
-            style: TextStyle(
-              fontSize: 11,
-              color: palette.foreground.withValues(alpha: .55),
-            ),
-          ),
         ),
       ),
     );
@@ -942,9 +937,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Widget _buildBottomChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
-    final canScrub =
-        _scrollController.hasClients &&
-        _scrollController.position.maxScrollExtent > 0;
+    final canScrub = _scrollController.hasClients && _chapterWeights.isNotEmpty;
     final borderColor = Theme.of(context).brightness == Brightness.dark
         ? Colors.white10
         : MarginalColors.line;
@@ -997,7 +990,9 @@ class _ReaderPageState extends State<ReaderPage> {
                               key: const Key('reader-progress-slider'),
                               value: _liveRatio.clamp(0.0, 1.0).toDouble(),
                               activeColor: palette.accent,
-                              onChanged: canScrub ? _jumpToRatio : null,
+                              onChanged: canScrub
+                                  ? (value) => unawaited(_jumpToRatio(value))
+                                  : null,
                             ),
                           ),
                           IconButton(

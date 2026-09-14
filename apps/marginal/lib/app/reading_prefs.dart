@@ -44,6 +44,51 @@ double scrollRatio(num scrollTop, num scrollHeight, num clientHeight) {
   return clampRatio(scrollTop / max);
 }
 
+/// 按章节正文长度加权汇总全本阅读进度。
+double workProgressRatio({
+  required List<int> chapterWeights,
+  required int chapterIndex,
+  required num chapterRatio,
+}) {
+  if (chapterWeights.isEmpty ||
+      chapterIndex < 0 ||
+      chapterIndex >= chapterWeights.length) {
+    return 0;
+  }
+  final weights = chapterWeights
+      .map((weight) => weight > 0 ? weight.toDouble() : 1.0)
+      .toList(growable: false);
+  final total = weights.fold<double>(0, (sum, value) => sum + value);
+  final before = weights
+      .take(chapterIndex)
+      .fold<double>(0, (sum, value) => sum + value);
+  return clampRatio(
+    (before + weights[chapterIndex] * clampRatio(chapterRatio)) / total,
+  );
+}
+
+({int chapterIndex, double chapterRatio}) workProgressTarget({
+  required List<int> chapterWeights,
+  required num workRatio,
+}) {
+  if (chapterWeights.isEmpty) return (chapterIndex: 0, chapterRatio: 0);
+  final weights = chapterWeights
+      .map((weight) => weight > 0 ? weight.toDouble() : 1.0)
+      .toList(growable: false);
+  final total = weights.fold<double>(0, (sum, value) => sum + value);
+  var remaining = clampRatio(workRatio) * total;
+  for (var i = 0; i < weights.length; i++) {
+    if (remaining <= weights[i] || i == weights.length - 1) {
+      return (
+        chapterIndex: i,
+        chapterRatio: clampRatio(remaining / weights[i]),
+      );
+    }
+    remaining -= weights[i];
+  }
+  return (chapterIndex: weights.length - 1, chapterRatio: 1);
+}
+
 double scrollTopForRatio(num ratio, num scrollHeight, num clientHeight) =>
     clampRatio(ratio) * (scrollHeight - clientHeight).clamp(0, double.infinity);
 

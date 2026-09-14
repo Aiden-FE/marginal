@@ -59,6 +59,7 @@ void main() {
 
     await tapGap(tester);
     expect(chromeOpacity(tester), 0);
+    expect(find.byKey(const Key('reader-hidden-progress')), findsNothing);
 
     await tapGap(tester);
     expect(chromeOpacity(tester), 1);

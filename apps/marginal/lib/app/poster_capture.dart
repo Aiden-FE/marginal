@@ -12,20 +12,21 @@ Future<Uint8List> renderPosterPng({
   required String workTitle,
   required String chapterTitle,
   required String text,
-  double pixelRatio = 3,
+  double pixelRatio = 2,
 }) async {
   final lines = wrapPosterText(text);
   final height = (520 + lines.length * 62).clamp(1200, 2400).toDouble();
   const width = 900.0;
   final recorder = ui.PictureRecorder();
-  Canvas(recorder).drawPaint(Paint()..color = const Color(0xFFF7F0DF));
+  final canvas = Canvas(recorder);
+  canvas.drawPaint(Paint()..color = const Color(0xFFF7F0DF));
   ParagraphPosterPainter(
     workTitle: workTitle,
     chapterTitle: chapterTitle,
     text: text,
-  ).paint(Canvas(recorder), Size(width, height));
+  ).paint(canvas, Size(width, height));
   final picture = recorder.endRecording();
-  final image = picture.toImageSync(
+  final image = await picture.toImage(
     (width * pixelRatio).round(),
     (height * pixelRatio).round(),
   );

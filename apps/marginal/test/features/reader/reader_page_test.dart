@@ -5,6 +5,7 @@ import 'package:marginal/app/share.dart';
 import 'package:marginal/core/types.dart';
 import 'package:marginal/data/memory_repository.dart';
 import 'package:marginal/features/reader/reader_page.dart';
+import 'package:marginal/features/reader/reader_poster_sheet.dart';
 
 void main() {
   final longText = List.generate(60, (i) => '段落$i：书里的一段话。').join('\n\n');
@@ -143,17 +144,20 @@ void main() {
     await pumpReader(tester, services);
 
     await tester.tap(find.text('自动阅读'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 16));
+    final firstFrame = scrollOffset(tester);
+    await tester.pump(const Duration(milliseconds: 16));
+    final secondFrame = scrollOffset(tester);
+    expect(secondFrame - firstFrame, lessThan(2), reason: '每帧位移应细小平滑');
+    for (var i = 0; i < 60; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     final moved = scrollOffset(tester);
-    expect(moved, greaterThan(40), reason: '60 px/s 滚动 1 秒');
-
-    await tester.pump(const Duration(seconds: 1));
-    final movedMore = scrollOffset(tester);
-    expect(movedMore, greaterThan(moved));
+    expect(moved, inInclusiveRange(45, 75), reason: '60 px/s 运行约 1 秒');
 
     await tester.tap(find.text('停止自动'));
     await tester.pump(const Duration(seconds: 1));
-    expect(scrollOffset(tester), movedMore);
+    expect(scrollOffset(tester), moved);
   });
 
   testWidgets('章末停留 1.5s 自动切下一章，末章自动停止', (tester) async {
@@ -161,13 +165,28 @@ void main() {
     await pumpReader(tester, services);
 
     await tester.tap(find.text('自动阅读'));
-    await tester.pump(const Duration(seconds: 2));
+    for (var i = 0; i < 130; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     await tester.pumpAndSettle();
     expect(find.textContaining('第 2/2 章'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 2));
     expect(find.textContaining('最后一章'), findsOneWidget);
     expect(find.text('自动阅读'), findsOneWidget, reason: '停止后按钮回到播放态');
+  });
+
+  testWidgets('悬浮卡片展示按章节正文加权的全本进度', (tester) async {
+    const seedSettings = {
+      'reading': {'chapterId': 'c1', 'ratio': 0.5},
+    };
+    final services = await seed(
+      chapterTexts: [longText, longText],
+      settings: seedSettings,
+    );
+    await pumpReader(tester, services, settings: seedSettings);
+
+    expect(find.text('75%'), findsOneWidget, reason: '第二章读到一半即全本 75%');
   });
 
   testWidgets('恢复阅读位置（chapterId + ratio）', (tester) async {
@@ -232,16 +251,16 @@ void main() {
     await settleQuietly(tester);
   });
 
-  testWidgets('分享文字走 ShareService，未注入 AI 插图回调时提示配置', (tester) async {
+  testWidgets('段落动作使用复制而非分享文字，未注入 AI 时提示配置', (tester) async {
     final services = await seed();
-    final share = FakeShareService();
-    await pumpReader(tester, services, shareService: share);
+    await pumpReader(tester, services);
 
     await tester.tap(find.text('第二段。'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('分享文字'));
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('分享文字'), findsNothing);
+    await tester.tapAt(const Offset(20, 40));
     await tester.pumpAndSettle();
-    expect(share.texts, ['第二段。']);
 
     await tester.tap(find.text('第二段。'));
     await tester.pumpAndSettle();
@@ -249,6 +268,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('AI 供应商'), findsOneWidget);
     await settleQuietly(tester);
+  });
+
+  testWidgets('ReaderPage 未注入编码器时仍向海报 sheet 提供默认编码器', (tester) async {
+    final services = await seed();
+    await pumpReader(tester, services);
+
+    await tester.tap(find.text('第二段。'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('生成分享海报'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final sheet = tester.widget<ReaderPosterSheet>(
+      find.byType(ReaderPosterSheet),
+    );
+    expect(sheet.encoder, isNotNull, reason: '不可用 null 覆盖默认编码器，否则会永远 loading');
   });
 
   testWidgets('注入 onIllustrateParagraph 后回调透传段落文本', (tester) async {

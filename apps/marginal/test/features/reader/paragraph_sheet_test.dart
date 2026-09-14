@@ -59,26 +59,21 @@ void main() {
     expect(find.text('取消收藏'), findsOneWidget);
   });
 
-  testWidgets('AI 插图与分享回调被触发', (tester) async {
+  testWidgets('复制与 AI 插图入口独立，移除分享文字', (tester) async {
     var illustrated = 0;
-    var shared = 0;
     await pumpHost(
       tester,
       sheet: ReaderParagraphSheet(
         paragraph: '段落',
         isFavorite: false,
-        onShareText: () => shared++,
         onIllustrate: () => illustrated++,
       ),
     );
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('分享文字'), findsNothing);
     await tester.tap(find.text('AI 插图'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('分享文字'));
-    await tester.pumpAndSettle();
     expect(illustrated, 1);
-    expect(shared, 1);
   });
 
   testWidgets('回调未注入时点击仅收起面板不崩溃', (tester) async {

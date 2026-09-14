@@ -5,9 +5,8 @@ import 'package:share_plus/share_plus.dart';
 /// 分享能力接口 —— 隔离 share_plus，便于注入 fake 做测试。
 ///
 /// 返回 `true` 表示系统分享流程已完成；`false` 表示当前环境不支持
-/// 或用户取消了分享，调用方据此降级（复制 / 长按图片存储 + SnackBar 提示）。
+/// 或用户取消了分享，调用方据此降级为长按图片存储并给出提示。
 abstract class ShareService {
-  Future<bool> shareText(String text);
   Future<bool> shareImage(XFile file);
 }
 
@@ -19,21 +18,6 @@ class SharePlusService implements ShareService {
   const SharePlusService({this.timeout = const Duration(seconds: 10)});
 
   final Duration timeout;
-
-  @override
-  Future<bool> shareText(String text) async {
-    if (text.trim().isEmpty) return false;
-    try {
-      final result = await SharePlus.instance
-          .share(ShareParams(text: text))
-          .timeout(timeout);
-      return result.status == ShareResultStatus.success;
-    } on TimeoutException {
-      return false;
-    } on Object {
-      return false;
-    }
-  }
 
   @override
   Future<bool> shareImage(XFile file) async {
@@ -56,14 +40,7 @@ class FakeShareService implements ShareService {
   FakeShareService({this.succeed = true});
 
   bool succeed;
-  final List<String> texts = [];
   final List<XFile> files = [];
-
-  @override
-  Future<bool> shareText(String text) async {
-    texts.add(text);
-    return succeed;
-  }
 
   @override
   Future<bool> shareImage(XFile file) async {
