@@ -91,6 +91,9 @@ class _ReaderPageState extends State<ReaderPage>
   bool _loading = true;
   double _liveRatio = 0;
   double? _previewWorkRatio;
+
+  /// 进度只重建悬浮卡片这一小块：自动阅读逐帧滚动时不再整页 setState。
+  final ValueNotifier<double> _displayWorkRatio = ValueNotifier<double>(0);
   int _progressJumpGeneration = 0;
   bool _resumeAutoAfterProgressDrag = false;
   List<int> _chapterWeights = const [];
@@ -168,6 +171,7 @@ class _ReaderPageState extends State<ReaderPage>
   void dispose() {
     _chromeTimer?.cancel();
     _autoTicker?.dispose();
+    _displayWorkRatio.dispose();
     _chapterEndTimer?.cancel();
     _positionSaveTimer?.cancel();
     _scrollController.dispose();
@@ -341,9 +345,10 @@ class _ReaderPageState extends State<ReaderPage>
       chapterIndex: _index,
       chapterRatio: chapterRatio,
     );
-    if ((work - _liveRatio).abs() >= 0.005) {
-      _liveRatio = work;
-      if (mounted) setState(() {});
+    _liveRatio = work;
+    if (_previewWorkRatio == null &&
+        (work - _displayWorkRatio.value).abs() >= 0.0005) {
+      _displayWorkRatio.value = work;
     }
   }
 
@@ -358,11 +363,14 @@ class _ReaderPageState extends State<ReaderPage>
   // ---- 阅读位置 ----
 
   void _schedulePositionSave() {
-    // 滚动节流：300ms 内至多保存一次（滚动停止后补一次）。
-    _positionSaveTimer ??= Timer(_positionSaveInterval, () {
-      _positionSaveTimer = null;
-      _savePositionNow();
-    });
+    // 滚动节流：300ms 内至多保存一次；自动阅读时放宽到 1s，避免持续 IndexedDB 写入。
+    _positionSaveTimer ??= Timer(
+      _autoRunning ? const Duration(milliseconds: 1000) : _positionSaveInterval,
+      () {
+        _positionSaveTimer = null;
+        _savePositionNow();
+      },
+    );
   }
 
   Future<void> _savePositionNow() async {
@@ -743,11 +751,13 @@ class _ReaderPageState extends State<ReaderPage>
   void _startProgressDrag(double value) {
     _resumeAutoAfterProgressDrag = _autoRunning;
     if (_autoRunning) _stopTicker();
-    setState(() => _previewWorkRatio = value);
+    _previewWorkRatio = value;
+    _displayWorkRatio.value = value;
   }
 
   void _previewProgress(double value) {
-    setState(() => _previewWorkRatio = value);
+    _previewWorkRatio = value;
+    _displayWorkRatio.value = value;
   }
 
   Future<void> _finishProgressDrag(double value) async {
@@ -775,7 +785,8 @@ class _ReaderPageState extends State<ReaderPage>
     }
     if (!mounted || generation != _progressJumpGeneration) return;
     _schedulePositionSave();
-    setState(() => _previewWorkRatio = null);
+    _previewWorkRatio = null;
+    _displayWorkRatio.value = _liveRatio;
     if (_resumeAutoAfterProgressDrag && _autoRunning && _sheetsOpen == 0) {
       _startTicker();
     }
@@ -1067,28 +1078,38 @@ class _ReaderPageState extends State<ReaderPage>
                             icon: Icon(Icons.chevron_left, color: foreground),
                             onPressed: _index > 0 ? _prevChapter : null,
                           ),
-                          Text(
-                            '${((_previewWorkRatio ?? _liveRatio) * 100).round()}%',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: foreground.withValues(alpha: .65),
-                            ),
-                          ),
-                          Expanded(
-                            child: Slider(
-                              key: const Key('reader-progress-slider'),
-                              value: (_previewWorkRatio ?? _liveRatio)
-                                  .clamp(0.0, 1.0)
-                                  .toDouble(),
-                              activeColor: palette.accent,
-                              onChangeStart: canScrub
-                                  ? _startProgressDrag
-                                  : null,
-                              onChanged: canScrub ? _previewProgress : null,
-                              onChangeEnd: canScrub
-                                  ? (value) =>
-                                        unawaited(_finishProgressDrag(value))
-                                  : null,
+                          ValueListenableBuilder<double>(
+                            valueListenable: _displayWorkRatio,
+                            builder: (context, value, _) => Expanded(
+                              child: Row(
+                                children: [
+                                  Text(
+                                    '${(value * 100).round()}%',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: foreground.withValues(alpha: .65),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Slider(
+                                      key: const Key('reader-progress-slider'),
+                                      value: value.clamp(0.0, 1.0),
+                                      activeColor: palette.accent,
+                                      onChangeStart: canScrub
+                                          ? _startProgressDrag
+                                          : null,
+                                      onChanged: canScrub
+                                          ? _previewProgress
+                                          : null,
+                                      onChangeEnd: canScrub
+                                          ? (v) => unawaited(
+                                              _finishProgressDrag(v),
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           IconButton(
