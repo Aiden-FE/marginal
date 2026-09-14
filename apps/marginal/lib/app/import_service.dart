@@ -71,21 +71,33 @@ class ImportService {
       updatedAt: now,
     );
     final proposed = assembleChapters(text, splitByHeuristics(text));
+    if (proposed.isEmpty || text.trim().isEmpty) {
+      throw const FormatException('TXT 没有可导入的正文');
+    }
     stage(ImportStages.writing);
     await repository.putWork(work);
-    for (var i = 0; i < proposed.length; i++) {
-      final body = normalizeChapterText(
-        sliceChapterText(text, proposed[i].startLine, proposed[i].endLine),
-      );
-      final chapter = Chapter(
-        id: newId('chapter'),
-        workId: work.id,
-        idx: i,
-        title: proposed[i].title,
-        wordCount: body.runes.length,
-        contentHash: sha256.convert(utf8.encode(body)).toString(),
-      );
-      await repository.putChapter(work.id, chapter, body);
+    try {
+      for (var i = 0; i < proposed.length; i++) {
+        final body = normalizeChapterText(
+          sliceChapterText(text, proposed[i].startLine, proposed[i].endLine),
+        );
+        if (body.trim().isEmpty) continue;
+        final chapter = Chapter(
+          id: newId('chapter'),
+          workId: work.id,
+          idx: i,
+          title: proposed[i].title,
+          wordCount: body.runes.length,
+          contentHash: sha256.convert(utf8.encode(body)).toString(),
+        );
+        await repository.putChapter(work.id, chapter, body);
+      }
+      if ((await repository.listChapters(work.id)).isEmpty) {
+        throw const FormatException('TXT 没有可导入的章节');
+      }
+    } catch (_) {
+      await repository.deleteWork(work.id);
+      rethrow;
     }
     return work;
   }
