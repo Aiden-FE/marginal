@@ -146,7 +146,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('第二段唯一文本。'));
+    await tester.longPress(find.text('第二段唯一文本。'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('action-poster')));
     await tester.pumpAndSettle();
@@ -165,7 +165,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('交互验收书'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('第二段唯一文本。'));
+    await tester.longPress(find.text('第二段唯一文本。'));
     await tester.pumpAndSettle();
 
     final tile = tester.widget<ListTile>(
@@ -225,6 +225,9 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: '$label 应在唤出菜单后可见');
     }
     expect(find.text('自动阅读').hitTestable(), findsOneWidget);
-    expect(find.byKey(const Key('reader-chapter-favorite')).hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('reader-chapter-favorite')).hitTestable(),
+      findsOneWidget,
+    );
   });
 }

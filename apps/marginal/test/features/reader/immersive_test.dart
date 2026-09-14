@@ -106,11 +106,18 @@ void main() {
     expect(chromeOpacity(tester), 0);
   });
 
-  testWidgets('点击段落打开动作面板而不是切换 chrome', (tester) async {
+  testWidgets('短按段落只切换 chrome，不打开动作面板', (tester) async {
     await pumpReader(tester);
     await tester.tap(find.text('第2段内容。'));
     await tester.pumpAndSettle();
+    expect(find.text('收藏段落'), findsNothing);
+    expect(chromeOpacity(tester), 0);
+  });
+
+  testWidgets('长按段落才打开动作面板', (tester) async {
+    await pumpReader(tester);
+    await tester.longPress(find.text('第2段内容。'));
+    await tester.pumpAndSettle();
     expect(find.text('收藏段落'), findsOneWidget);
-    expect(chromeOpacity(tester), 1);
   });
 }

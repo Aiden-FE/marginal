@@ -90,6 +90,9 @@ class _ReaderPageState extends State<ReaderPage>
   int _index = 0;
   bool _loading = true;
   double _liveRatio = 0;
+  double? _previewWorkRatio;
+  int _progressJumpGeneration = 0;
+  bool _resumeAutoAfterProgressDrag = false;
   List<int> _chapterWeights = const [];
   late final Map<String, dynamic> _settings = Map<String, dynamic>.of(
     widget.work.settings,
@@ -199,6 +202,7 @@ class _ReaderPageState extends State<ReaderPage>
     List<Chapter> chapters,
     int index, {
     bool restorePosition = false,
+    double? targetRatio,
   }) async {
     // 切章前把上一章的滚动位置落库。
     _positionSaveTimer?.cancel();
@@ -220,25 +224,32 @@ class _ReaderPageState extends State<ReaderPage>
     });
     _settings['reader'] = {'chapterId': chapters[index].id};
     await _persistSettings();
+    final positioned = Completer<void>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) {
+        positioned.complete();
+        return;
+      }
       final position = prefs.loadReadingPosition(_settings);
       final p = _scrollController.position;
-      if (restorePosition &&
-          position != null &&
-          position.chapterId == chapters[index].id) {
-        _scrollController.jumpTo(
-          prefs.scrollTopForRatio(
-            position.ratio,
-            p.maxScrollExtent + p.viewportDimension,
-            p.viewportDimension,
-          ),
-        );
-      } else {
-        _scrollController.jumpTo(0);
-      }
+      final ratio =
+          targetRatio ??
+          (restorePosition &&
+                  position != null &&
+                  position.chapterId == chapters[index].id
+              ? position.ratio
+              : 0.0);
+      _scrollController.jumpTo(
+        prefs.scrollTopForRatio(
+          ratio,
+          p.maxScrollExtent + p.viewportDimension,
+          p.viewportDimension,
+        ),
+      );
       _updateProgress(_scrollController.offset);
+      positioned.complete();
     });
+    await positioned.future;
   }
 
   Future<void> _openChapterById(String chapterId) async {
@@ -672,25 +683,46 @@ class _ReaderPageState extends State<ReaderPage>
     }
   }
 
-  Future<void> _jumpToRatio(double value) async {
+  void _startProgressDrag(double value) {
+    _resumeAutoAfterProgressDrag = _autoRunning;
+    if (_autoRunning) _stopTicker();
+    setState(() => _previewWorkRatio = value);
+  }
+
+  void _previewProgress(double value) {
+    setState(() => _previewWorkRatio = value);
+  }
+
+  Future<void> _finishProgressDrag(double value) async {
+    final generation = ++_progressJumpGeneration;
     final target = prefs.workProgressTarget(
       chapterWeights: _chapterWeights,
       workRatio: value,
     );
     if (target.chapterIndex != _index) {
-      await _open(_chapters, target.chapterIndex);
+      await _open(
+        _chapters,
+        target.chapterIndex,
+        targetRatio: target.chapterRatio,
+      );
+    } else if (_scrollController.hasClients) {
+      final position = _scrollController.position;
+      _scrollController.jumpTo(
+        prefs.scrollTopForRatio(
+          target.chapterRatio,
+          position.maxScrollExtent + position.viewportDimension,
+          position.viewportDimension,
+        ),
+      );
+      _updateProgress(_scrollController.offset);
     }
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    _scrollController.jumpTo(
-      prefs.scrollTopForRatio(
-        target.chapterRatio,
-        position.maxScrollExtent + position.viewportDimension,
-        position.viewportDimension,
-      ),
-    );
-    _updateProgress(_scrollController.offset);
+    if (!mounted || generation != _progressJumpGeneration) return;
     _schedulePositionSave();
+    setState(() => _previewWorkRatio = null);
+    if (_resumeAutoAfterProgressDrag && _autoRunning && _sheetsOpen == 0) {
+      _startTicker();
+    }
+    _resumeAutoAfterProgressDrag = false;
   }
 
   Future<void> _showAiMenu() async {
@@ -808,7 +840,7 @@ class _ReaderPageState extends State<ReaderPage>
       child: GestureDetector(
         key: _paraKey(i),
         behavior: HitTestBehavior.opaque,
-        onTap: () => _chromeVisible ? _showParagraphSheet(i) : _showChrome(),
+        onTap: _toggleChrome,
         onLongPress: () => _showParagraphSheet(i),
         child: Text.rich(
           TextSpan(
@@ -937,7 +969,7 @@ class _ReaderPageState extends State<ReaderPage>
 
   Widget _buildBottomChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
-    final canScrub = _scrollController.hasClients && _chapterWeights.isNotEmpty;
+    final canScrub = _chapterWeights.isNotEmpty;
     final borderColor = Theme.of(context).brightness == Brightness.dark
         ? Colors.white10
         : MarginalColors.line;
@@ -979,7 +1011,7 @@ class _ReaderPageState extends State<ReaderPage>
                             onPressed: _index > 0 ? _prevChapter : null,
                           ),
                           Text(
-                            '${(_liveRatio * 100).round()}%',
+                            '${((_previewWorkRatio ?? _liveRatio) * 100).round()}%',
                             style: TextStyle(
                               fontSize: 11,
                               color: foreground.withValues(alpha: .65),
@@ -988,10 +1020,17 @@ class _ReaderPageState extends State<ReaderPage>
                           Expanded(
                             child: Slider(
                               key: const Key('reader-progress-slider'),
-                              value: _liveRatio.clamp(0.0, 1.0).toDouble(),
+                              value: (_previewWorkRatio ?? _liveRatio)
+                                  .clamp(0.0, 1.0)
+                                  .toDouble(),
                               activeColor: palette.accent,
-                              onChanged: canScrub
-                                  ? (value) => unawaited(_jumpToRatio(value))
+                              onChangeStart: canScrub
+                                  ? _startProgressDrag
+                                  : null,
+                              onChanged: canScrub ? _previewProgress : null,
+                              onChangeEnd: canScrub
+                                  ? (value) =>
+                                        unawaited(_finishProgressDrag(value))
                                   : null,
                             ),
                           ),

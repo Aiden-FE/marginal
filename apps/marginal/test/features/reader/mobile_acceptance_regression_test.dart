@@ -122,7 +122,7 @@ void main() {
     final services = await seed();
     await openReader(tester, services);
 
-    await tester.tap(find.text('这是第二段，出现了转折。'));
+    await tester.longPress(find.text('这是第二段，出现了转折。'));
     await tester.pumpAndSettle();
     expect(find.text('这是第一段，讲了一件小事。'), findsOneWidget, reason: '第一段只应存在于背景正文');
     expect(
@@ -136,7 +136,7 @@ void main() {
     final services = await seed();
     await openReader(tester, services);
 
-    await tester.tap(find.text('这是第三段，收束本章。'));
+    await tester.longPress(find.text('这是第三段，收束本章。'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('action-poster')));
     await tester.pumpAndSettle();
@@ -149,7 +149,7 @@ void main() {
     final services = await seed();
     await openReader(tester, services);
 
-    await tester.tap(find.text('这是第二段，出现了转折。'));
+    await tester.longPress(find.text('这是第二段，出现了转折。'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('action-favorite')));
     await tester.pumpAndSettle();

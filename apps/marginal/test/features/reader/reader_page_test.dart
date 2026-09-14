@@ -189,6 +189,25 @@ void main() {
     expect(find.text('75%'), findsOneWidget, reason: '第二章读到一半即全本 75%');
   });
 
+  testWidgets('拖动全本进度只预览，松手后一次定位目标章节', (tester) async {
+    final services = await seed(chapterTexts: [longText, longText]);
+    await pumpReader(tester, services);
+    final sliderFinder = find.byKey(const Key('reader-progress-slider'));
+    var slider = tester.widget<Slider>(sliderFinder);
+    slider.onChangeStart!(slider.value);
+    slider.onChanged!(0.8);
+    await tester.pump();
+
+    expect(find.textContaining('第 1/2 章'), findsOneWidget);
+    expect(find.text('80%'), findsOneWidget, reason: '拖动中只更新预览值');
+
+    slider = tester.widget<Slider>(sliderFinder);
+    slider.onChangeEnd!(0.8);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('第 2/2 章'), findsOneWidget);
+    expect(scrollOffset(tester), greaterThan(100), reason: '直接定位目标章内约 60% 位置');
+  });
+
   testWidgets('恢复阅读位置（chapterId + ratio）', (tester) async {
     const seedSettings = {
       'reading': {'chapterId': 'c0', 'ratio': 1.0},
@@ -212,7 +231,7 @@ void main() {
     await pumpReader(tester, services);
 
     // 「第二段」位于顶栏 chrome 之下方，避免被顶栏拦截点击。
-    await tester.tap(find.text('第二段。'));
+    await tester.longPress(find.text('第二段。'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('收藏段落'));
     await tester.pumpAndSettle();
@@ -255,14 +274,14 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.text('第二段。'));
+    await tester.longPress(find.text('第二段。'));
     await tester.pumpAndSettle();
     expect(find.text('复制'), findsOneWidget);
     expect(find.text('分享文字'), findsNothing);
     await tester.tapAt(const Offset(20, 40));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('第二段。'));
+    await tester.longPress(find.text('第二段。'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('AI 插图'));
     await tester.pumpAndSettle();
@@ -274,7 +293,7 @@ void main() {
     final services = await seed();
     await pumpReader(tester, services);
 
-    await tester.tap(find.text('第二段。'));
+    await tester.longPress(find.text('第二段。'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('生成分享海报'));
     await tester.pump(const Duration(milliseconds: 300));
@@ -290,7 +309,7 @@ void main() {
     final illustrated = <String>[];
     await pumpReader(tester, services, onIllustrateParagraph: illustrated.add);
 
-    await tester.tap(find.text('第二段。'));
+    await tester.longPress(find.text('第二段。'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('AI 插图'));
     await tester.pumpAndSettle();
