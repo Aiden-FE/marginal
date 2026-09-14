@@ -46,10 +46,9 @@ void main() {
       )
       .opacity;
 
-  /// 点击两段之间的空隙（不属于段落交互区）。
+  /// 点击屏幕中央热区（唤出/收起界面，且不与段落长按冲突）。
   Future<void> tapGap(WidgetTester tester) async {
-    final topLeft = tester.getTopLeft(find.text('第1段内容。'));
-    await tester.tapAt(Offset(topLeft.dx + 4, topLeft.dy - 8));
+    await tester.tapAt(const Offset(400, 300));
     await tester.pumpAndSettle();
   }
 
@@ -106,12 +105,32 @@ void main() {
     expect(chromeOpacity(tester), 0);
   });
 
-  testWidgets('短按段落只切换 chrome，不打开动作面板', (tester) async {
+  testWidgets('短按中央热区只切换 chrome，不打开动作面板', (tester) async {
     await pumpReader(tester);
-    await tester.tap(find.text('第2段内容。'));
+    await tester.tapAt(const Offset(400, 300));
     await tester.pumpAndSettle();
     expect(find.text('收藏段落'), findsNothing);
     expect(chromeOpacity(tester), 0);
+  });
+
+  testWidgets('上/下热区翻页而不唤出 chrome，章尾自动进入下一章', (tester) async {
+    await pumpReader(tester);
+    // 收起 chrome 后，上部热区在章首无上一屏，也不应唤出界面。
+    await tapGap(tester);
+    expect(chromeOpacity(tester), 0);
+    await tester.tapAt(const Offset(400, 50));
+    await tester.pumpAndSettle();
+    expect(chromeOpacity(tester), 0);
+
+    // 下部热区连续翻页：滚到章末后再次点击进入下一章。
+    await tester.tapAt(const Offset(400, 550));
+    await tester.pumpAndSettle();
+    expect(chromeOpacity(tester), 0, reason: '翻页不唤出界面');
+    for (var i = 0; i < 6; i++) {
+      await tester.tapAt(const Offset(400, 550));
+      await tester.pumpAndSettle();
+    }
+    expect(find.textContaining('第 2/2 章'), findsNothing, reason: '单章书稿不跨章');
   });
 
   testWidgets('长按段落才打开动作面板', (tester) async {

@@ -116,7 +116,7 @@ void main() {
     expect(find.byType(ReaderPage), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 4));
-    await tester.tapAt(const Offset(195, 420));
+    await tester.tapAt(const Offset(400, 300));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -217,7 +217,7 @@ void main() {
     expect(find.text('收藏段落'), findsNothing);
 
     // 点击屏幕中央唤醒菜单。
-    await tester.tapAt(const Offset(195, 420));
+    await tester.tapAt(const Offset(400, 300));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

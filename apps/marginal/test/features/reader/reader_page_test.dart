@@ -189,6 +189,45 @@ void main() {
     expect(find.text('75%'), findsOneWidget, reason: '第二章读到一半即全本 75%');
   });
 
+  testWidgets('下部热区翻页到章末后点击进入下一章', (tester) async {
+    final services = await seed();
+    await pumpReader(tester, services);
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('第 1/2 章'), findsOneWidget);
+
+    await tester.tapAt(const Offset(400, 550));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('第 2/2 章'),
+      findsOneWidget,
+      reason: '短章章末向下翻页即跨章',
+    );
+  });
+
+  testWidgets('上部热区在章首向上翻页回退到上一章章尾', (tester) async {
+    const seedSettings = {
+      'reading': {'chapterId': 'c1', 'ratio': 0.0},
+    };
+    final services = await seed(
+      chapterTexts: [longText, longText],
+      settings: seedSettings,
+    );
+    await pumpReader(tester, services, settings: seedSettings);
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('第 2/2 章'), findsOneWidget);
+
+    await tester.tapAt(const Offset(400, 50));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('第 1/2 章'),
+      findsOneWidget,
+      reason: '章首向上翻页回退上一章',
+    );
+    expect(scrollOffset(tester), greaterThan(0), reason: '落在上一章章尾');
+  });
+
   testWidgets('拖动全本进度只预览，松手后一次定位目标章节', (tester) async {
     final services = await seed(chapterTexts: [longText, longText]);
     await pumpReader(tester, services);

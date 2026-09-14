@@ -671,6 +671,63 @@ class _ReaderPageState extends State<ReaderPage>
     }
   }
 
+  // ---- 三分热区：中带唤出界面，上下带翻页（滚动模式语义） ----
+
+  void _handleReadingTapUp(TapUpDetails details) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final local = box.globalToLocal(details.globalPosition);
+    final band = (local.dy * 3 / box.size.height).floor().clamp(0, 2);
+    switch (band) {
+      case 0:
+        _pageByViewport(-1);
+      case 1:
+        _toggleChrome();
+      case 2:
+        _pageByViewport(1);
+    }
+  }
+
+  void _pageByViewport(int direction) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (direction > 0) {
+      if (position.pixels >= position.maxScrollExtent - 0.5) {
+        if (_index + 1 < _chapters.length) {
+          unawaited(_open(_chapters, _index + 1));
+        }
+        return;
+      }
+      unawaited(
+        _scrollController.animateTo(
+          (position.pixels + position.viewportDimension).clamp(
+            0.0,
+            position.maxScrollExtent,
+          ),
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    } else {
+      if (position.pixels <= 0.5) {
+        if (_index > 0) {
+          unawaited(_open(_chapters, _index - 1, targetRatio: 1.0));
+        }
+        return;
+      }
+      unawaited(
+        _scrollController.animateTo(
+          (position.pixels - position.viewportDimension).clamp(
+            0.0,
+            position.maxScrollExtent,
+          ),
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    }
+  }
+
   // ---- A 方案：章节导航、进度拖动与 AI 快捷入口 ----
 
   Future<void> _prevChapter() async {
@@ -799,7 +856,7 @@ class _ReaderPageState extends State<ReaderPage>
     return GestureDetector(
       key: const Key('reader-chrome-toggle-zone'),
       behavior: HitTestBehavior.opaque,
-      onTap: _toggleChrome,
+      onTapUp: _handleReadingTapUp,
       child: SingleChildScrollView(
         controller: _scrollController,
         padding: EdgeInsets.fromLTRB(
@@ -840,7 +897,7 @@ class _ReaderPageState extends State<ReaderPage>
       child: GestureDetector(
         key: _paraKey(i),
         behavior: HitTestBehavior.opaque,
-        onTap: _toggleChrome,
+        // 段落不占用短按：点击位置由三分热区决定行为，长按才出操作面板。
         onLongPress: () => _showParagraphSheet(i),
         child: Text.rich(
           TextSpan(
