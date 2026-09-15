@@ -10,6 +10,7 @@ import '../core/bundle.dart';
 import '../core/repository.dart';
 import '../core/split.dart';
 import '../core/types.dart';
+import 'gbk_decoder.dart';
 import 'ids.dart';
 import 'paragraphs.dart';
 
@@ -56,12 +57,7 @@ class ImportService {
   }) async {
     void stage(String s) => onProgress?.call(s);
     stage(ImportStages.readFile);
-    String text;
-    try {
-      text = utf8.decode(bytes, allowMalformed: false);
-    } catch (_) {
-      text = utf8.decode(bytes, allowMalformed: true);
-    }
+    final text = _decodeText(bytes);
     stage(ImportStages.splitting);
     final now = DateTime.now().millisecondsSinceEpoch;
     final work = Work(
@@ -101,6 +97,16 @@ class ImportService {
       rethrow;
     }
     return work;
+  }
+
+  String _decodeText(Uint8List bytes) {
+    try {
+      final text = utf8.decode(bytes, allowMalformed: false);
+      if (!text.contains('\uFFFD')) return text;
+    } catch (_) {
+      // fall through to GBK
+    }
+    return decodeGbk(bytes);
   }
 
   Future<Work> importEpub(
