@@ -117,6 +117,39 @@ void main() {
     },
   );
 
+  test(
+    'illustration accept approval writes revision and rollback restores draft',
+    () async {
+      final repo = MemoryRepository();
+      await repo.putWork(const Work(id: 'w', title: 'w'));
+      await repo.putIllustration(
+        const Illustration(
+          id: 'i',
+          workId: 'w',
+          prompt: 'p',
+          providerId: 'demo',
+          model: 'demo',
+          blobId: 'b',
+          chapterId: 'c',
+        ),
+      );
+      final p = Proposal(
+        id: 'p',
+        workId: 'w',
+        runId: 'illustration-run',
+        type: 'illustration_accept',
+        payload: jsonEncode({'illustrationId': 'i'}),
+      );
+      await repo.putProposal(p);
+      final service = ApprovalService(repo);
+      await service.approve(p);
+      expect((await repo.listIllustrations('w')).single.status, 'accepted');
+      expect(await repo.listRevisions('w'), hasLength(1));
+      await service.rollbackRun('illustration-run');
+      expect((await repo.listIllustrations('w')).single.status, 'draft');
+    },
+  );
+
   test('pending proposals expire', () async {
     final repo = MemoryRepository();
     await repo.putWork(const Work(id: 'w', title: 'w'));

@@ -123,7 +123,14 @@ class Prompt {
   );
 }
 
-enum ProposalKind { textRepair, chapterSplit, entityCanon, coverage, delete }
+enum ProposalKind {
+  textRepair,
+  chapterSplit,
+  entityCanon,
+  illustrationAccept,
+  coverage,
+  delete,
+}
 
 enum ProposalStatus { pending, approved, rejected, expired, rolledBack }
 
@@ -131,6 +138,7 @@ ProposalKind parseProposalKind(String value) => switch (value) {
   'text_repair' => ProposalKind.textRepair,
   'chapter_split' => ProposalKind.chapterSplit,
   'entity_canon' => ProposalKind.entityCanon,
+  'illustration_accept' => ProposalKind.illustrationAccept,
   'coverage' => ProposalKind.coverage,
   'delete' => ProposalKind.delete,
   _ => throw FormatException('unknown proposal kind: $value'),
@@ -216,6 +224,22 @@ class EntityCanonPayload {
     return EntityCanonPayload(
       entityCardId: j['entityCardId'] as String,
       status: j['status'] as String,
+    );
+  }
+}
+
+class IllustrationAcceptPayload {
+  final String illustrationId;
+
+  const IllustrationAcceptPayload({required this.illustrationId});
+
+  factory IllustrationAcceptPayload.fromJson(Map<String, dynamic> j) {
+    if (j['illustrationId'] is! String ||
+        (j['illustrationId'] as String).isEmpty) {
+      throw const FormatException('invalid illustration_accept payload');
+    }
+    return IllustrationAcceptPayload(
+      illustrationId: j['illustrationId'] as String,
     );
   }
 }

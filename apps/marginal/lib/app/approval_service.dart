@@ -84,6 +84,36 @@ class ApprovalService {
         'kind': 'entity_canon',
         'entityCard': updated.toJson(),
       });
+    } else if (kind == ProposalKind.illustrationAccept) {
+      final payload = IllustrationAcceptPayload.fromJson(decodeMap(p.payload));
+      final illustrations = await repository.listIllustrations(p.workId);
+      final illustration = illustrations.firstWhere(
+        (item) => item.id == payload.illustrationId,
+        orElse: () =>
+            throw StateError('illustration ${payload.illustrationId} missing'),
+      );
+      before = jsonEncode({
+        'kind': 'illustration_accept',
+        'illustration': illustration.toJson(),
+      });
+      final updated = Illustration(
+        id: illustration.id,
+        workId: illustration.workId,
+        prompt: illustration.prompt,
+        providerId: illustration.providerId,
+        model: illustration.model,
+        blobId: illustration.blobId,
+        chapterId: illustration.chapterId,
+        paraIndex: illustration.paraIndex,
+        status: 'accepted',
+        entityCardIds: illustration.entityCardIds,
+        createdAt: illustration.createdAt,
+      );
+      await repository.putIllustration(updated);
+      after = jsonEncode({
+        'kind': 'illustration_accept',
+        'illustration': updated.toJson(),
+      });
     } else if (kind == ProposalKind.chapterSplit) {
       final payload = ChapterSplitPayload.fromJson(decodeMap(p.payload));
       final current = await repository.listChapters(p.workId);
@@ -217,6 +247,9 @@ class ApprovalService {
       if (snapshot['kind'] == 'entity_canon') {
         final raw = Map<String, dynamic>.from(snapshot['entityCard'] as Map);
         await repository.putEntityCard(EntityCard.fromJson(raw));
+      } else if (snapshot['kind'] == 'illustration_accept') {
+        final raw = Map<String, dynamic>.from(snapshot['illustration'] as Map);
+        await repository.putIllustration(Illustration.fromJson(raw));
       } else if (snapshot['kind'] == 'chapter_split') {
         final entries = (snapshot['chapters'] as List).cast<Map>();
         await repository.replaceChapters(p.workId, [

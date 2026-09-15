@@ -168,8 +168,10 @@ void main() {
     expect(find.text('草稿'), findsOneWidget);
 
     await tester.tap(find.text('设为接受'));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.text('接受这张插图？'), findsOneWidget);
+    await tester.tap(find.text('确认接受'));
+    await tester.pumpAndSettle();
 
     expect(
       (await services.repository.listIllustrations('w')).single.status,
