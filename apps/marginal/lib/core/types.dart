@@ -123,13 +123,14 @@ class Prompt {
   );
 }
 
-enum ProposalKind { textRepair, chapterSplit, coverage, delete }
+enum ProposalKind { textRepair, chapterSplit, entityCanon, coverage, delete }
 
 enum ProposalStatus { pending, approved, rejected, expired, rolledBack }
 
 ProposalKind parseProposalKind(String value) => switch (value) {
   'text_repair' => ProposalKind.textRepair,
   'chapter_split' => ProposalKind.chapterSplit,
+  'entity_canon' => ProposalKind.entityCanon,
   'coverage' => ProposalKind.coverage,
   'delete' => ProposalKind.delete,
   _ => throw FormatException('unknown proposal kind: $value'),
@@ -195,6 +196,26 @@ class ChapterSplitPayload {
     return ChapterSplitPayload(
       sourceChapterId: j['sourceChapterId'] as String,
       chapters: chapters,
+    );
+  }
+}
+
+class EntityCanonPayload {
+  final String entityCardId;
+  final String status;
+
+  const EntityCanonPayload({required this.entityCardId, required this.status});
+
+  factory EntityCanonPayload.fromJson(Map<String, dynamic> j) {
+    if (j['entityCardId'] is! String ||
+        (j['entityCardId'] as String).isEmpty ||
+        j['status'] is! String ||
+        !{'draft', 'canon'}.contains(j['status'])) {
+      throw const FormatException('invalid entity_canon payload');
+    }
+    return EntityCanonPayload(
+      entityCardId: j['entityCardId'] as String,
+      status: j['status'] as String,
     );
   }
 }

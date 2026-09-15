@@ -87,6 +87,36 @@ void main() {
     expect((await repo.listProposals('w')).single.status, 'pending');
   });
 
+  test(
+    'entity canon approval writes revision and rollback restores draft',
+    () async {
+      final repo = MemoryRepository();
+      await repo.putWork(const Work(id: 'w', title: 'w'));
+      await repo.putEntityCard(
+        const EntityCard(
+          id: 'e',
+          workId: 'w',
+          name: '角色',
+          kind: EntityKind.character,
+        ),
+      );
+      final p = Proposal(
+        id: 'p',
+        workId: 'w',
+        runId: 'entity-run',
+        type: 'entity_canon',
+        payload: jsonEncode({'entityCardId': 'e', 'status': 'canon'}),
+      );
+      await repo.putProposal(p);
+      final service = ApprovalService(repo);
+      await service.approve(p);
+      expect((await repo.listEntityCards('w')).single.isCanon, isTrue);
+      expect(await repo.listRevisions('w'), hasLength(1));
+      expect(await service.rollbackRun('entity-run'), ['p']);
+      expect((await repo.listEntityCards('w')).single.isCanon, isFalse);
+    },
+  );
+
   test('pending proposals expire', () async {
     final repo = MemoryRepository();
     await repo.putWork(const Work(id: 'w', title: 'w'));

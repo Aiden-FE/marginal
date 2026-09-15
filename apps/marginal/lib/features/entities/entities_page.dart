@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../app/ai/ai_services.dart';
+import '../../app/approval_service.dart';
 import '../../app/ids.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/platform_services.dart';
@@ -507,19 +509,53 @@ class _EntityDetailSheetState extends State<_EntityDetailSheet> {
   }
 
   Future<void> _toggleCanon() async {
-    await _save(
-      EntityCard(
-        id: _card.id,
-        workId: _card.workId,
-        name: _card.name,
-        kind: _card.kind,
-        aliases: _card.aliases,
-        attributes: _card.attributes,
-        status: _card.isCanon ? 'draft' : 'canon',
-        portraitBlobId: _card.portraitBlobId,
-        createdAt: _card.createdAt,
+    final nextStatus = _card.isCanon ? 'draft' : 'canon';
+    final proposal = Proposal(
+      id: newId('proposal'),
+      workId: widget.workId,
+      runId: 'entity-${_card.id}',
+      type: 'entity_canon',
+      payload: jsonEncode({'entityCardId': _card.id, 'status': nextStatus}),
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _repo.putProposal(proposal);
+    if (!mounted) return;
+    final approve = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(nextStatus == 'canon' ? '设为正典？' : '退回草稿？'),
+        content: const Text('这会改变该实体卡是否可作为插图参考，确认后才会生效。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认'),
+          ),
+        ],
       ),
     );
+    if (approve != true) {
+      await _repo.updateProposal(
+        Proposal(
+          id: proposal.id,
+          workId: proposal.workId,
+          runId: proposal.runId,
+          type: proposal.type,
+          payload: proposal.payload,
+          status: 'rejected',
+          createdAt: proposal.createdAt,
+        ),
+      );
+      return;
+    }
+    await ApprovalService(_repo).approve(proposal);
+    final cards = await _repo.listEntityCards(widget.workId);
+    final updated = cards.where((card) => card.id == _card.id).firstOrNull;
+    if (updated != null && mounted) setState(() => _card = updated);
+    widget.onChanged();
   }
 
   Future<void> _addAlias() async {

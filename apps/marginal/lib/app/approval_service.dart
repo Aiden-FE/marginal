@@ -56,6 +56,34 @@ class ApprovalService {
         _chapterWithText(chapter, afterText),
         afterText,
       );
+    } else if (kind == ProposalKind.entityCanon) {
+      final payload = EntityCanonPayload.fromJson(decodeMap(p.payload));
+      final cards = await repository.listEntityCards(p.workId);
+      final card = cards.firstWhere(
+        (item) => item.id == payload.entityCardId,
+        orElse: () =>
+            throw StateError('entity ${payload.entityCardId} missing'),
+      );
+      before = jsonEncode({
+        'kind': 'entity_canon',
+        'entityCard': card.toJson(),
+      });
+      final updated = EntityCard(
+        id: card.id,
+        workId: card.workId,
+        name: card.name,
+        kind: card.kind,
+        aliases: card.aliases,
+        attributes: card.attributes,
+        status: payload.status,
+        portraitBlobId: card.portraitBlobId,
+        createdAt: card.createdAt,
+      );
+      await repository.putEntityCard(updated);
+      after = jsonEncode({
+        'kind': 'entity_canon',
+        'entityCard': updated.toJson(),
+      });
     } else if (kind == ProposalKind.chapterSplit) {
       final payload = ChapterSplitPayload.fromJson(decodeMap(p.payload));
       final current = await repository.listChapters(p.workId);
@@ -186,7 +214,10 @@ class ApprovalService {
       final rev = revisions.where((r) => r.proposalId == p.id).toList();
       if (rev.isEmpty) continue; // 无快照（如 coverage/delete）不可回滚正文。
       final snapshot = decodeMap(rev.first.beforeSnapshot);
-      if (snapshot['kind'] == 'chapter_split') {
+      if (snapshot['kind'] == 'entity_canon') {
+        final raw = Map<String, dynamic>.from(snapshot['entityCard'] as Map);
+        await repository.putEntityCard(EntityCard.fromJson(raw));
+      } else if (snapshot['kind'] == 'chapter_split') {
         final entries = (snapshot['chapters'] as List).cast<Map>();
         await repository.replaceChapters(p.workId, [
           for (final raw in entries)

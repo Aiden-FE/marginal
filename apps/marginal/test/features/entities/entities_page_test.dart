@@ -106,14 +106,19 @@ void main() {
     await tester.tap(find.text('林殊'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('设为正典'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text('设为正典？'), findsOneWidget);
+    await tester.tap(find.text('确认'));
+    await tester.pumpAndSettle();
     expect(
       (await services.repository.listEntityCards('w')).single.isCanon,
       isTrue,
     );
 
     await tester.tap(find.text('退回草稿'));
+    await tester.pumpAndSettle();
+    expect(find.text('退回草稿？'), findsOneWidget);
+    await tester.tap(find.text('确认'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(
