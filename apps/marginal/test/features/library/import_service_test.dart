@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marginal/app/import_service.dart';
 import 'package:marginal/app/platform_services.dart';
@@ -10,6 +11,53 @@ import 'package:marginal/data/memory_repository.dart';
 const String sampleTxt = '第一章 起点\n\n少年推开门，风雪扑面。\n\n第二章 归途\n\n雪停了，路还很长。\n';
 
 Uint8List bytesOf(String s) => Uint8List.fromList(utf8.encode(s));
+
+Uint8List epubBytes() {
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile(
+        'META-INF/container.xml',
+        utf8
+            .encode(
+              '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>',
+            )
+            .length,
+        utf8.encode(
+          '<?xml version="1.0"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>',
+        ),
+      ),
+    )
+    ..addFile(
+      ArchiveFile(
+        'OEBPS/content.opf',
+        utf8
+            .encode(
+              '<package><manifest><item id="c1" href="chapter1.xhtml"/><item id="c2" href="chapter2.xhtml"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>',
+            )
+            .length,
+        utf8.encode(
+          '<package><manifest><item id="c1" href="chapter1.xhtml"/><item id="c2" href="chapter2.xhtml"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>',
+        ),
+      ),
+    )
+    ..addFile(
+      ArchiveFile(
+        'OEBPS/chapter1.xhtml',
+        70,
+        utf8.encode(
+          '<html><title>第一章</title><body><p>风从门缝吹进来。</p></body></html>',
+        ),
+      ),
+    )
+    ..addFile(
+      ArchiveFile(
+        'OEBPS/chapter2.xhtml',
+        70,
+        utf8.encode('<html><title>第二章</title><body><p>天亮了。</p></body></html>'),
+      ),
+    );
+  return Uint8List.fromList(ZipEncoder().encode(archive));
+}
 
 class FailingChapterRepository extends MemoryRepository {
   var writes = 0;
@@ -53,6 +101,17 @@ void main() {
       );
       expect(await repo.listWorks(), isEmpty);
       expect(await repo.listChapters('missing-work'), isEmpty);
+    });
+
+    test('EPUB 按 spine 顺序导入章节正文', () async {
+      final repo = MemoryRepository();
+      await repo.init();
+      final work = await ImportService(repo).importEpub('故事.epub', epubBytes());
+      expect(work.title, '故事');
+      final chapters = await repo.listChapters(work.id);
+      expect(chapters.map((chapter) => chapter.title), ['第一章', '第二章']);
+      expect(await repo.getChapterText(chapters.first.id), '风从门缝吹进来。');
+      expect(await repo.getChapterText(chapters.last.id), '天亮了。');
     });
 
     test('空 TXT 拒绝导入且不写库', () async {

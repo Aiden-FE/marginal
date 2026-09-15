@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -29,7 +30,7 @@ class PickerFileSource implements FileSource {
     final result = await FilePicker.platform.pickFiles(
       withData: true,
       type: FileType.custom,
-      allowedExtensions: ['txt', 'mabk'],
+      allowedExtensions: ['txt', 'mabk', 'epub'],
     );
     final file = result?.files.single;
     return file?.bytes == null ? null : PickedInput(file!.name, file.bytes!);
@@ -102,6 +103,87 @@ class ImportService {
     return work;
   }
 
+  Future<Work> importEpub(
+    String name,
+    Uint8List bytes, {
+    void Function(String stage)? onProgress,
+  }) async {
+    onProgress?.call(ImportStages.readFile);
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final files = <String, String>{};
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      final content = file.content as List<int>;
+      files[file.name] = utf8.decode(content, allowMalformed: true);
+    }
+    final container = files['META-INF/container.xml'];
+    if (container == null) throw const FormatException('EPUB 缺少 container.xml');
+    final opfPath = _xmlAttr(container, 'rootfile', 'full-path');
+    if (opfPath == null) throw const FormatException('EPUB 缺少 OPF 清单');
+    final opf = files[opfPath];
+    if (opf == null) throw const FormatException('EPUB 找不到 OPF 文件');
+    final base = opfPath.contains('/')
+        ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1)
+        : '';
+    final manifest = <String, String>{
+      for (final match in RegExp(
+        r'''<item\b[^>]*?id=["']([^"']+)["'][^>]*?href=["']([^"']+)["']''',
+        caseSensitive: false,
+      ).allMatches(opf))
+        match.group(1)!: _resolvePath(base, match.group(2)!),
+    };
+    final spine = [
+      for (final match in RegExp(
+        r'''<itemref\b[^>]*?idref=["']([^"']+)["']''',
+        caseSensitive: false,
+      ).allMatches(opf))
+        match.group(1)!,
+    ];
+    if (spine.isEmpty) throw const FormatException('EPUB 没有可读章节');
+    onProgress?.call(ImportStages.splitting);
+    final chapters = <MapEntry<String, String>>[];
+    for (final id in spine) {
+      final path = manifest[id];
+      final html = path == null ? null : files[path];
+      if (html == null) continue;
+      final title = _htmlTitle(html) ?? '第 ${chapters.length + 1} 章';
+      final text = _htmlText(html);
+      if (text.trim().isNotEmpty) chapters.add(MapEntry(title, text));
+    }
+    if (chapters.isEmpty) throw const FormatException('EPUB 没有可读正文');
+    onProgress?.call(ImportStages.writing);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final work = Work(
+      id: newId('work'),
+      title: name.replaceFirst(RegExp(r'\.epub$', caseSensitive: false), ''),
+      importSource: name,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await repository.putWork(work);
+    try {
+      for (var i = 0; i < chapters.length; i++) {
+        final text = chapters[i].value;
+        await repository.putChapter(
+          work.id,
+          Chapter(
+            id: newId('chapter'),
+            workId: work.id,
+            idx: i,
+            title: chapters[i].key,
+            wordCount: text.runes.length,
+            contentHash: sha256.convert(utf8.encode(text)).toString(),
+          ),
+          text,
+        );
+      }
+    } catch (_) {
+      await repository.deleteWork(work.id);
+      rethrow;
+    }
+    return work;
+  }
+
   Future<Work> importMabk(Uint8List bytes, {required bool copy}) async {
     final bundle = readBundle(bytes);
     final data = bundle.data;
@@ -110,6 +192,88 @@ class ImportService {
       (w) => w.id == data.work.id || w.title == '${data.work.title}（副本）',
     );
   }
+
+  String? _xmlAttr(String source, String tag, String attribute) {
+    final match = RegExp(
+      '<$tag\\b[^>]*\\b$attribute=["\\\']([^"\\\']+)["\\\']',
+      caseSensitive: false,
+    ).firstMatch(source);
+    return match?.group(1);
+  }
+
+  String _resolvePath(String base, String path) {
+    final parts = [...base.split('/'), ...path.split('/')];
+    final resolved = <String>[];
+    for (final part in parts) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (resolved.isNotEmpty) resolved.removeLast();
+      } else {
+        resolved.add(part);
+      }
+    }
+    return resolved.join('/');
+  }
+
+  String? _htmlTitle(String html) {
+    final match = RegExp(
+      r'<title[^>]*>(.*?)</title>',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(html);
+    final title = match == null ? null : _htmlText(match.group(1)!);
+    final clean = title?.trim();
+    return clean == null || clean.isEmpty ? null : clean;
+  }
+
+  String _htmlText(String html) {
+    final withoutHead = html
+        .replaceAll(
+          RegExp(r'<head[^>]*>.*?</head>', caseSensitive: false, dotAll: true),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'<title[^>]*>.*?</title>',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          '',
+        );
+    final withoutStyle = withoutHead.replaceAll(
+      RegExp(
+        r'<(script|style)[^>]*>.*?</\1>',
+        caseSensitive: false,
+        dotAll: true,
+      ),
+      '',
+    );
+    final withBreaks = withoutStyle.replaceAll(
+      RegExp(r'<br\s*/?>|</p>|</div>|</h[1-6]>', caseSensitive: false),
+      '\n',
+    );
+    final text = withBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
+    return _decodeHtmlEntities(text)
+        .replaceAll(RegExp(r'[ \\t]+'), ' ')
+        .replaceAll(RegExp(r'\\n{3,}'), '\\n\\n')
+        .trim();
+  }
+
+  String _decodeHtmlEntities(String text) => text
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAllMapped(
+        RegExp(r'&#(\\d+);'),
+        (match) => String.fromCharCode(int.parse(match.group(1)!)),
+      )
+      .replaceAllMapped(
+        RegExp(r'&#x([0-9a-f]+);', caseSensitive: false),
+        (match) => String.fromCharCode(int.parse(match.group(1)!, radix: 16)),
+      );
 
   /// 导出整本书为 .mabk 并唤起系统分享。
   ///

@@ -195,8 +195,17 @@ class _LibraryPageState extends State<LibraryPage> {
     }
     try {
       final service = ImportService(widget.services.repository);
-      final work = input.name.toLowerCase().endsWith('.mabk')
+      final lowerName = input.name.toLowerCase();
+      final work = lowerName.endsWith('.mabk')
           ? await service.importMabk(input.bytes, copy: true)
+          : lowerName.endsWith('.epub')
+          ? await service.importEpub(
+              input.name,
+              input.bytes,
+              onProgress: (stage) {
+                if (mounted) setState(() => _stage = stage);
+              },
+            )
           : await service.importTxt(
               input.name,
               input.bytes,
