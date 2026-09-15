@@ -12,6 +12,7 @@ class MemoryRepository implements Repository {
   final Map<String, Prompt> _prompts = {};
   final Map<String, Proposal> _proposals = {};
   final Map<String, AgentRun> _runs = {};
+  final Map<String, RepairRun> _repairRuns = {};
   final Map<String, ToolCall> _calls = {};
   final Map<String, BlobRec> _blobs = {};
   final Map<String, Revision> _revisions = {};
@@ -39,6 +40,7 @@ class MemoryRepository implements Repository {
     _prompts.removeWhere((_, v) => v.workId == id);
     _proposals.removeWhere((_, v) => v.workId == id);
     _revisions.removeWhere((_, v) => v.workId == id);
+    _repairRuns.removeWhere((_, v) => v.workId == id);
     _runs.removeWhere((_, v) => v.workId == id);
     _blobs.removeWhere((_, v) => v.workId == id);
     _entityCards.removeWhere((_, v) => v.workId == id);
@@ -167,6 +169,12 @@ class MemoryRepository implements Repository {
   @override
   Future<void> putAgentRun(AgentRun value) async => _runs[value.id] = value;
   @override
+  Future<List<RepairRun>> listRepairRuns(String workId) async =>
+      _repairRuns.values.where((v) => v.workId == workId).toList();
+  @override
+  Future<void> putRepairRun(RepairRun value) async =>
+      _repairRuns[value.id] = value;
+  @override
   Future<List<ToolCall>> listToolCalls(String runId) async =>
       _calls.values.where((v) => v.runId == runId).toList();
   @override
@@ -200,6 +208,7 @@ class MemoryRepository implements Repository {
     entityCards: await listEntityCards(workId),
     illustrations: await listIllustrations(workId),
     runs: await listAgentRuns(workId),
+    repairRuns: await listRepairRuns(workId),
     toolCalls: (await Future.wait(
       (await listAgentRuns(workId)).map((r) => listToolCalls(r.id)),
     )).expand((x) => x).toList(),
@@ -239,6 +248,9 @@ class MemoryRepository implements Repository {
     for (final r in payload.runs) {
       await putAgentRun(r);
     }
+    for (final r in payload.repairRuns) {
+      await putRepairRun(r);
+    }
     for (final c in payload.toolCalls) {
       await putToolCall(c);
     }
@@ -259,6 +271,7 @@ class MemoryRepository implements Repository {
     _entityCards.clear();
     _illustrations.clear();
     _runs.clear();
+    _repairRuns.clear();
     _calls.clear();
     _blobs.clear();
     _blobData.clear();

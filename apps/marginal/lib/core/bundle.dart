@@ -80,6 +80,9 @@ Uint8List buildBundle(
     revisions: (j['revisions'] as List? ?? [])
         .map((x) => Revision.fromJson(Map<String, dynamic>.from(x)))
         .toList(),
+    repairRuns: (j['repairRuns'] as List? ?? [])
+        .map((x) => RepairRun.fromJson(Map<String, dynamic>.from(x)))
+        .toList(),
     entityCards: (j['entityCards'] as List? ?? [])
         .map((x) => EntityCard.fromJson(Map<String, dynamic>.from(x)))
         .toList(),
@@ -101,6 +104,7 @@ BundleData reidForCopy(BundleData d) {
   final workId = '${d.work.id}-copy-${DateTime.now().microsecondsSinceEpoch}';
   final cm = {for (final c in d.chapters) c.id: '$workId-${c.id}'};
   final rm = {for (final r in d.runs) r.id: '$workId-${r.id}'};
+  final rrm = {for (final r in d.repairRuns) r.id: '$workId-${r.id}'};
   final bm = {for (final b in d.blobs) b.id: '$workId-${b.id}'};
   final pm = {for (final p in d.prompts) p.id: '$workId-${p.id}'};
   final em = {for (final e in d.entityCards) e.id: '$workId-${e.id}'};
@@ -213,6 +217,20 @@ BundleData reidForCopy(BundleData d) {
           ),
         )
         .toList(),
+    repairRuns: d.repairRuns
+        .map(
+          (r) => RepairRun(
+            id: rrm[r.id]!,
+            workId: workId,
+            kind: r.kind,
+            providerId: r.providerId,
+            model: r.model,
+            startedAt: r.startedAt,
+            finishedAt: r.finishedAt,
+            status: r.status,
+          ),
+        )
+        .toList(),
     runs: d.runs
         .map(
           (r) => AgentRun(
@@ -245,6 +263,7 @@ BundleData reidForCopy(BundleData d) {
             id: '$workId-${r.id}',
             workId: workId,
             proposalId: propm[r.proposalId] ?? r.proposalId,
+            runId: rrm[r.runId] ?? r.runId,
             beforeSnapshot: r.beforeSnapshot,
             afterSnapshot: r.afterSnapshot,
             createdAt: r.createdAt,

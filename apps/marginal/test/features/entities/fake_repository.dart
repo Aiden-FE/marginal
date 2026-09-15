@@ -13,6 +13,7 @@ class FakeRepository implements Repository {
   final Map<String, Proposal> _proposals = {};
   final Map<String, Revision> _revisions = {};
   final Map<String, AgentRun> _runs = {};
+  final Map<String, RepairRun> _repairRuns = {};
   final Map<String, ToolCall> _calls = {};
   final Map<String, EntityCard> _entityCards = {};
   final Map<String, Illustration> _illustrations = {};
@@ -120,6 +121,12 @@ class FakeRepository implements Repository {
       _runs.values.where((r) => r.workId == workId).toList();
   @override
   Future<void> putAgentRun(AgentRun value) async => _runs[value.id] = value;
+  @override
+  Future<List<RepairRun>> listRepairRuns(String workId) async =>
+      _repairRuns.values.where((r) => r.workId == workId).toList();
+  @override
+  Future<void> putRepairRun(RepairRun value) async =>
+      _repairRuns[value.id] = value;
   @override
   Future<List<ToolCall>> listToolCalls(String runId) async =>
       _calls.values.where((c) => c.runId == runId).toList();

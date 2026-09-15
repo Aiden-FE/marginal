@@ -195,6 +195,7 @@ class ApprovalService {
           id: revisionId,
           workId: p.workId,
           proposalId: p.id,
+          runId: p.runId,
           beforeSnapshot: before,
           afterSnapshot: after,
           createdAt: DateTime.now().millisecondsSinceEpoch,
