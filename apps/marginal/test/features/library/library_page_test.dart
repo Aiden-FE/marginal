@@ -149,6 +149,31 @@ void main() {
       expect(find.text('旧宅笔记'), findsOneWidget);
     });
 
+    testWidgets('工作台搜索会读取章节正文并支持清除', (tester) async {
+      final services = await memoryServices();
+      await seedWork(services.repository, id: 'w-1', title: '雾中来信');
+      await services.repository.putChapter(
+        'w-1',
+        const Chapter(id: 'c-1', workId: 'w-1', idx: 0, title: '第一章'),
+        '只在正文中出现的线索。',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LibraryPage(services: services, showWorkspaceFeatures: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('搜索书名、作者、分组或章节'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '正文中出现的线索');
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(find.text('雾中来信'), findsWidgets);
+      await tester.tap(find.byTooltip('清除搜索'));
+      await tester.pumpAndSettle();
+      expect(find.text('雾中来信'), findsWidgets);
+    });
+
     testWidgets('收藏书置顶并显示星标', (tester) async {
       final services = await memoryServices();
       await seedWork(services.repository, id: 'w-1', title: '普通之书');
