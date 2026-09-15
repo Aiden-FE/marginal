@@ -11,6 +11,8 @@ Future<void> _ensureRepairRun(
   String workId,
   String runId, {
   required String kind,
+  String providerId = '',
+  String model = 'agent',
 }) async {
   final existing = await repository.listRepairRuns(workId);
   if (existing.any((run) => run.id == runId)) return;
@@ -31,6 +33,8 @@ ToolRegistry readingTools({
   required Repository repository,
   required String workId,
   required String runId,
+  String providerId = '',
+  String model = 'agent',
 }) {
   final tools = <AgentTool>[
     FunctionAgentTool(
@@ -115,7 +119,14 @@ ToolRegistry readingTools({
         'additionalProperties': false,
       },
       handler: (a) async {
-        await _ensureRepairRun(repository, workId, runId, kind: 'content');
+        await _ensureRepairRun(
+          repository,
+          workId,
+          runId,
+          kind: 'content',
+          providerId: providerId,
+          model: model,
+        );
         final p = Proposal(
           id: newId('proposal'),
           workId: workId,
@@ -142,7 +153,14 @@ ToolRegistry readingTools({
         'additionalProperties': false,
       },
       handler: (a) async {
-        await _ensureRepairRun(repository, workId, runId, kind: 'structure');
+        await _ensureRepairRun(
+          repository,
+          workId,
+          runId,
+          kind: 'structure',
+          providerId: providerId,
+          model: model,
+        );
         final p = Proposal(
           id: newId('proposal'),
           workId: workId,

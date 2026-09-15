@@ -91,6 +91,11 @@ void main() {
     expect(events.whereType<CheckpointSavedEvent>(), isNotEmpty);
     await sub.cancel();
 
+    final repairRuns = await repo.listRepairRuns(work.id);
+    expect(repairRuns, hasLength(1));
+    expect(repairRuns.single.id, 'e2e');
+    expect(repairRuns.single.kind, 'content');
+
     var proposals = await repo.listProposals(work.id);
     expect(proposals.single.status, 'pending');
 
