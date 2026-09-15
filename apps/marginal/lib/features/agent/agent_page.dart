@@ -66,6 +66,8 @@ class _AgentPageState extends State<AgentPage> {
         repository: widget.services.repository,
         workId: widget.work.id,
         runId: runId,
+        providerId: configured?.id ?? 'demo',
+        model: configured?.model ?? 'demo',
       ),
       systemPrompt: '你是 Marginal 阅读助手。只使用书稿工具；写入必须先形成提案并等待用户确认。',
     );

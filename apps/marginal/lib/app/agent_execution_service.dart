@@ -51,6 +51,9 @@ class AgentExecutionSession {
         result.status == AgentStatus.failed ||
         result.status == AgentStatus.budgetExceeded) {
       await _expirePendingProposals();
+      await _finishRepairRun('failed');
+    } else {
+      await _finishRepairRun('completed');
     }
     await _subscription?.cancel();
     return result;
@@ -111,6 +114,18 @@ class AgentExecutionSession {
         await repository.putAgentRun(_run);
       }
     }
+  }
+
+  Future<void> _finishRepairRun(String status) async {
+    final runs = await repository.listRepairRuns(workId);
+    final run = runs.where((item) => item.id == runId).firstOrNull;
+    if (run == null) return;
+    await repository.putRepairRun(
+      run.copyWith(
+        status: status,
+        finishedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
   }
 
   Future<void> _expirePendingProposals() async {
