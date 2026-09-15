@@ -287,6 +287,7 @@ class Proposal {
 
 class Revision {
   final String id, workId, proposalId, beforeSnapshot, afterSnapshot;
+  final String runId;
   final int createdAt;
   const Revision({
     required this.id,
@@ -294,12 +295,14 @@ class Revision {
     required this.proposalId,
     required this.beforeSnapshot,
     required this.afterSnapshot,
+    this.runId = '',
     this.createdAt = 0,
   });
   Map<String, dynamic> toJson() => {
     'id': id,
     'workId': workId,
     'proposalId': proposalId,
+    'runId': runId,
     'beforeSnapshot': beforeSnapshot,
     'afterSnapshot': afterSnapshot,
     'createdAt': createdAt,
@@ -308,9 +311,66 @@ class Revision {
     id: j['id'],
     workId: j['workId'],
     proposalId: j['proposalId'],
+    runId: j['runId'] ?? '',
     beforeSnapshot: j['beforeSnapshot'] ?? '',
     afterSnapshot: j['afterSnapshot'] ?? '',
     createdAt: j['createdAt'] ?? 0,
+  );
+}
+
+class RepairRun {
+  final String id, workId, kind, providerId, model, status;
+  final int startedAt;
+  final int? finishedAt;
+
+  const RepairRun({
+    required this.id,
+    required this.workId,
+    required this.kind,
+    required this.providerId,
+    required this.model,
+    this.startedAt = 0,
+    this.finishedAt,
+    this.status = 'running',
+  });
+
+  RepairRun copyWith({
+    String? kind,
+    String? providerId,
+    String? model,
+    int? finishedAt,
+    String? status,
+  }) => RepairRun(
+    id: id,
+    workId: workId,
+    kind: kind ?? this.kind,
+    providerId: providerId ?? this.providerId,
+    model: model ?? this.model,
+    startedAt: startedAt,
+    finishedAt: finishedAt ?? this.finishedAt,
+    status: status ?? this.status,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'kind': kind,
+    'providerId': providerId,
+    'model': model,
+    'startedAt': startedAt,
+    'finishedAt': finishedAt,
+    'status': status,
+  };
+
+  factory RepairRun.fromJson(Map<String, dynamic> j) => RepairRun(
+    id: j['id'],
+    workId: j['workId'],
+    kind: j['kind'] ?? 'content',
+    providerId: j['providerId'] ?? '',
+    model: j['model'] ?? '',
+    startedAt: j['startedAt'] ?? 0,
+    finishedAt: j['finishedAt'],
+    status: j['status'] ?? 'running',
   );
 }
 
@@ -576,6 +636,7 @@ class BundleData {
   final List<AgentRun> runs;
   final List<ToolCall> toolCalls;
   final List<Revision> revisions;
+  final List<RepairRun> repairRuns;
   final List<EntityCard> entityCards;
   final List<Illustration> illustrations;
   const BundleData({
@@ -589,6 +650,7 @@ class BundleData {
     this.runs = const [],
     this.toolCalls = const [],
     this.revisions = const [],
+    this.repairRuns = const [],
     this.entityCards = const [],
     this.illustrations = const [],
   });
@@ -603,6 +665,7 @@ class BundleData {
     'runs': runs.map((x) => x.toJson()).toList(),
     'toolCalls': toolCalls.map((x) => x.toJson()).toList(),
     'revisions': revisions.map((x) => x.toJson()).toList(),
+    'repairRuns': repairRuns.map((x) => x.toJson()).toList(),
     'entityCards': entityCards.map((x) => x.toJson()).toList(),
     'illustrations': illustrations.map((x) => x.toJson()).toList(),
   };

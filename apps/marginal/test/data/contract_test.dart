@@ -74,6 +74,18 @@ Future<void> runContract(Repository repo) async {
   await repo.putAnchor(anchor);
   expect((await repo.listAnchors('w1')).single.targetId, 'b1');
 
+  final repairRun = RepairRun(
+    id: 'rr1',
+    workId: 'w1',
+    kind: 'content',
+    providerId: 'demo',
+    model: 'demo',
+    startedAt: 3,
+    status: 'completed',
+  );
+  await repo.putRepairRun(repairRun);
+  expect((await repo.listRepairRuns('w1')).single.model, 'demo');
+
   final run = AgentRun(
     id: 'r1',
     workId: 'w1',
@@ -97,6 +109,7 @@ Future<void> runContract(Repository repo) async {
   final exported = await repo.exportAll('w1');
   expect(exported.chapters.single.id, 'c1');
   expect(exported.proposals.single.status, 'approved');
+  expect(exported.repairRuns.single.id, 'rr1');
 
   await repo.importBundle(
     exported,
@@ -118,6 +131,8 @@ Future<void> runContract(Repository repo) async {
   await repo.deleteWork('w1');
   expect((await repo.listWorks()).map((w) => w.id), isNot(contains('w1')));
   expect(await repo.listChapters('w1'), isEmpty);
+  expect(await repo.listRepairRuns('w1'), isEmpty);
+  expect((await repo.listRepairRuns(copyWork.id)).single.workId, copyWork.id);
 }
 
 void main() {
