@@ -12,6 +12,11 @@ const String sampleTxt = '第一章 起点\n\n少年推开门，风雪扑面。\
 
 Uint8List bytesOf(String s) => Uint8List.fromList(utf8.encode(s));
 
+Uint8List hexBytes(String hex) => Uint8List.fromList([
+  for (var i = 0; i < hex.length; i += 2)
+    int.parse(hex.substring(i, i + 2), radix: 16),
+]);
+
 Uint8List epubBytes() {
   final archive = Archive()
     ..addFile(
@@ -82,6 +87,20 @@ void main() {
         ImportStages.splitting,
         ImportStages.writing,
       ]);
+    });
+
+    test('GBK TXT 正确解码而不是静默替换乱码', () async {
+      final repo = MemoryRepository();
+      await repo.init();
+      final work = await ImportService(repo).importTxt(
+        '中文.txt',
+        hexBytes(
+          'b5dad2bbd5c220c6f0b5e30a0ac9d9c4eacdc6bfaac3c5a3acb7e7d1a9c6cbc3e6a1a30a',
+        ),
+      );
+      expect(work.title, '中文');
+      final chapter = (await repo.listChapters(work.id)).single;
+      expect(await repo.getChapterText(chapter.id), contains('风雪扑面'));
     });
 
     test('不传 onProgress 也能正常导入', () async {
