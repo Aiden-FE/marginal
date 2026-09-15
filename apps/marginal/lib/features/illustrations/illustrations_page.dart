@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../app/ai/ai_services.dart';
+import '../../app/approval_service.dart';
 import '../../app/paragraphs.dart' as app_split;
 import '../../app/ids.dart';
 import '../../app/marginal_theme.dart';
@@ -269,21 +271,48 @@ class _IllustrationsPageState extends State<IllustrationsPage> {
   }
 
   Future<void> _accept(Illustration illustration) async {
-    await _repo.putIllustration(
-      Illustration(
-        id: illustration.id,
-        workId: illustration.workId,
-        prompt: illustration.prompt,
-        providerId: illustration.providerId,
-        model: illustration.model,
-        blobId: illustration.blobId,
-        chapterId: illustration.chapterId,
-        paraIndex: illustration.paraIndex,
-        status: 'accepted',
-        entityCardIds: illustration.entityCardIds,
-        createdAt: illustration.createdAt,
+    final proposal = Proposal(
+      id: newId('proposal'),
+      workId: widget.work.id,
+      runId: 'illustration-${illustration.id}',
+      type: 'illustration_accept',
+      payload: jsonEncode({'illustrationId': illustration.id}),
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _repo.putProposal(proposal);
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('接受这张插图？'),
+        content: const Text('确认后这张插图会成为当前书稿的正式插图。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认接受'),
+          ),
+        ],
       ),
     );
+    if (confirmed != true) {
+      await _repo.updateProposal(
+        Proposal(
+          id: proposal.id,
+          workId: proposal.workId,
+          runId: proposal.runId,
+          type: proposal.type,
+          payload: proposal.payload,
+          status: 'rejected',
+          createdAt: proposal.createdAt,
+        ),
+      );
+      return;
+    }
+    await ApprovalService(_repo).approve(proposal);
     await _load();
     if (mounted) _toast('插图已设为接受');
   }
