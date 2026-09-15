@@ -6,6 +6,27 @@ import '../core/repository.dart';
 import '../core/types.dart';
 import 'ids.dart';
 
+Future<void> _ensureRepairRun(
+  Repository repository,
+  String workId,
+  String runId, {
+  required String kind,
+}) async {
+  final existing = await repository.listRepairRuns(workId);
+  if (existing.any((run) => run.id == runId)) return;
+  await repository.putRepairRun(
+    RepairRun(
+      id: runId,
+      workId: workId,
+      kind: kind,
+      providerId: '',
+      model: 'agent',
+      startedAt: DateTime.now().millisecondsSinceEpoch,
+      status: 'running',
+    ),
+  );
+}
+
 ToolRegistry readingTools({
   required Repository repository,
   required String workId,
@@ -94,6 +115,7 @@ ToolRegistry readingTools({
         'additionalProperties': false,
       },
       handler: (a) async {
+        await _ensureRepairRun(repository, workId, runId, kind: 'content');
         final p = Proposal(
           id: newId('proposal'),
           workId: workId,
@@ -120,6 +142,7 @@ ToolRegistry readingTools({
         'additionalProperties': false,
       },
       handler: (a) async {
+        await _ensureRepairRun(repository, workId, runId, kind: 'structure');
         final p = Proposal(
           id: newId('proposal'),
           workId: workId,

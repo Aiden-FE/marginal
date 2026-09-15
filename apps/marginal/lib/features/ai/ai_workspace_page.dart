@@ -23,6 +23,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
   Map<String, int> _pendingByWork = const {};
   Map<String, List<Proposal>> _proposalsByWork = const {};
   Map<String, List<Revision>> _revisionsByWork = const {};
+  Map<String, List<RepairRun>> _repairRunsByWork = const {};
   bool _loading = true;
 
   @override
@@ -36,6 +37,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
     final pending = <String, int>{};
     final proposals = <String, List<Proposal>>{};
     final revisions = <String, List<Revision>>{};
+    final repairRuns = <String, List<RepairRun>>{};
     for (final work in works) {
       final workProposals = await widget.services.repository.listProposals(
         work.id,
@@ -47,6 +49,9 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
       revisions[work.id] = await widget.services.repository.listRevisions(
         work.id,
       );
+      repairRuns[work.id] = await widget.services.repository.listRepairRuns(
+        work.id,
+      );
     }
     if (!mounted) return;
     setState(() {
@@ -54,6 +59,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
       _pendingByWork = pending;
       _proposalsByWork = proposals;
       _revisionsByWork = revisions;
+      _repairRunsByWork = repairRuns;
       _loading = false;
     });
   }
@@ -147,11 +153,9 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
     for (final work in _works) {
       final proposals = _proposalsByWork[work.id] ?? const <Proposal>[];
       final revisions = _revisionsByWork[work.id] ?? const <Revision>[];
-      final runs = proposals
-          .map((proposal) => proposal.runId)
-          .where((runId) => runId.isNotEmpty)
-          .toSet();
-      for (final runId in runs) {
+      final repairRuns = _repairRunsByWork[work.id] ?? const <RepairRun>[];
+      for (final repairRun in repairRuns) {
+        final runId = repairRun.id;
         final batch = proposals
             .where((proposal) => proposal.runId == runId)
             .toList();
@@ -177,7 +181,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
               ),
               title: Text('${work.title} · $runId'),
               subtitle: Text(
-                '提案 ${batch.length} · 已批准 $approved · 待处理 $pending',
+                '${repairRun.kind == 'structure' ? '结构' : '内容'} · ${repairRun.status} · 提案 ${batch.length} · 已批准 $approved · 待处理 $pending',
               ),
               trailing: canRollback
                   ? TextButton(

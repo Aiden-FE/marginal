@@ -27,6 +27,7 @@ class ApprovalService {
       throw StateError('proposal ${p.id} is not pending');
     }
     await repository.updateProposal(_withStatus(p, 'rejected'));
+    await _refreshRepairRunStatus(p);
   }
 
   /// 解析提案类型；未知类型抛 [FormatException]，调用方不得将其标为 approved。
@@ -215,6 +216,25 @@ class ApprovalService {
         afterSnapshot: after,
       ),
     );
+    await _refreshRepairRunStatus(p);
+  }
+
+  Future<void> _refreshRepairRunStatus(Proposal proposal) async {
+    if (proposal.runId.isEmpty) return;
+    final runs = await repository.listRepairRuns(proposal.workId);
+    final run = runs.where((item) => item.id == proposal.runId).firstOrNull;
+    if (run == null) return;
+    final proposals = await repository.listProposals(proposal.workId);
+    final batch = proposals.where((item) => item.runId == run.id).toList();
+    final pending = batch.any((item) => item.status == 'pending');
+    final failed = batch.any((item) => item.status == 'expired');
+    final finished = !pending && batch.isNotEmpty;
+    await repository.putRepairRun(
+      run.copyWith(
+        status: failed ? 'failed' : (finished ? 'completed' : 'running'),
+        finishedAt: finished ? DateTime.now().millisecondsSinceEpoch : null,
+      ),
+    );
   }
 
   /// 回滚某个 Run 已批准的提案：按 revision 逆序恢复 before 快照。
@@ -284,6 +304,7 @@ class ApprovalService {
         );
       }
       await repository.updateProposal(_withStatus(p, 'rolled_back'));
+      await _refreshRepairRunStatus(p);
       rolled.add(p.id);
     }
     return rolled;
