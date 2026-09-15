@@ -117,10 +117,18 @@ class ImportService {
     onProgress?.call(ImportStages.readFile);
     final archive = ZipDecoder().decodeBytes(bytes);
     final files = <String, String>{};
+    final binaryFiles = <String, List<int>>{};
     for (final file in archive.files) {
       if (!file.isFile) continue;
       final content = file.content as List<int>;
-      files[file.name] = utf8.decode(content, allowMalformed: true);
+      if (RegExp(
+        r'\.(png|jpe?g|gif|webp|svg)$',
+        caseSensitive: false,
+      ).hasMatch(file.name)) {
+        binaryFiles[file.name] = content;
+      } else {
+        files[file.name] = utf8.decode(content, allowMalformed: true);
+      }
     }
     final container = files['META-INF/container.xml'];
     if (container == null) throw const FormatException('EPUB 缺少 container.xml');

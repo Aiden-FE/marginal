@@ -11,8 +11,10 @@ import '../../app/reader_projection.dart';
 import '../../app/paragraphs.dart';
 import '../../app/share.dart';
 import '../../app/platform_services.dart';
+import '../../app/reading_stats.dart';
 import '../../app/poster_capture.dart';
 import '../../core/types.dart';
+import 'chrome_icon_button.dart';
 import 'reader_chapter_sheet.dart';
 import 'reader_chunks.dart';
 import 'reader_favorites_sheet.dart';
@@ -85,6 +87,7 @@ class _ReaderPageState extends State<ReaderPage>
 
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _paraKeys = {};
+  late final DateTime _sessionStartedAt = DateTime.now();
 
   List<Chapter> _chapters = const [];
   List<String> _paragraphs = const [];
@@ -173,6 +176,11 @@ class _ReaderPageState extends State<ReaderPage>
 
   @override
   void dispose() {
+    final minutes = DateTime.now().difference(_sessionStartedAt).inMinutes;
+    if (minutes > 0) {
+      recordReadingMinutes(_settings, now: DateTime.now(), minutes: minutes);
+      _persistSettings();
+    }
     _chromeTimer?.cancel();
     _autoTicker?.dispose();
     _displayWorkRatio.dispose();
@@ -995,24 +1003,20 @@ class _ReaderPageState extends State<ReaderPage>
                         ],
                       ),
                     ),
-                    IconButton(
+                    ChromeIconButton(
                       key: const Key('reader-chapter-favorite'),
                       tooltip: bookmarked ? '已收藏' : '收藏本章',
-                      icon: Icon(
-                        bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                        color: bookmarked ? palette.accent : foreground,
-                      ),
+                      icon: bookmarked ? Icons.bookmark : Icons.bookmark_border,
+                      color: bookmarked ? palette.accent : foreground,
                       onPressed: _toggleChapterBookmark,
                     ),
-                    IconButton(
+                    ChromeIconButton(
                       key: const Key('reader-theme-toggle'),
                       tooltip: _theme == ReaderTheme.dark ? '切换纸色' : '切换夜间',
-                      icon: Icon(
-                        _theme == ReaderTheme.dark
-                            ? Icons.light_mode
-                            : Icons.dark_mode,
-                        color: foreground,
-                      ),
+                      icon: _theme == ReaderTheme.dark
+                          ? Icons.light_mode
+                          : Icons.dark_mode,
+                      color: foreground,
                       onPressed: () => _setTheme(
                         _theme == ReaderTheme.dark
                             ? ReaderTheme.paper

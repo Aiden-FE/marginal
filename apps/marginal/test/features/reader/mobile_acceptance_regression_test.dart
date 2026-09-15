@@ -173,6 +173,17 @@ void main() {
 
     const favorite = Key('reader-chapter-favorite');
     expect(find.byKey(favorite).hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('reader-theme-toggle')).hitTestable(),
+      findsOneWidget,
+      reason: 'Safari 下主题与书签按钮必须可见且可点，而不是透明盲点',
+    );
+    final favoriteSize = tester.getSize(find.byKey(favorite));
+    final themeSize = tester.getSize(
+      find.byKey(const Key('reader-theme-toggle')),
+    );
+    expect(favoriteSize.width, greaterThanOrEqualTo(44));
+    expect(themeSize.width, greaterThanOrEqualTo(44));
     await tester.tap(find.byKey(favorite));
     await tester.pumpAndSettle();
     final saved = await services.repository.getWork('w');

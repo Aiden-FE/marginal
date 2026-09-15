@@ -31,30 +31,54 @@ class _ReadingShellState extends State<ReadingShell> {
     ];
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? MarginalColors.nightSurface
-            : MarginalColors.surface,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book_rounded),
-            label: '书库',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: 'AI',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: '我的',
-          ),
-        ],
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? MarginalColors.nightSurface
+              : MarginalColors.surface,
+          indicatorColor: MarginalColors.accentSoft,
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return IconThemeData(
+              color: selected
+                  ? MarginalColors.accent
+                  : (Theme.of(context).brightness == Brightness.dark
+                        ? MarginalColors.nightInk
+                        : MarginalColors.ink),
+              size: 23,
+            );
+          }),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              color: selected ? MarginalColors.accent : MarginalColors.muted,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            );
+          }),
+        ),
+        child: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) =>
+              setState(() => _selectedIndex = index),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book_rounded),
+              label: '书库',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined),
+              selectedIcon: Icon(Icons.auto_awesome),
+              label: 'AI',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline_rounded),
+              selectedIcon: Icon(Icons.person_rounded),
+              label: '我的',
+            ),
+          ],
+        ),
       ),
     );
   }

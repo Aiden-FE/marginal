@@ -4,6 +4,8 @@ import '../../app/marginal_theme.dart';
 import '../../app/platform_services.dart';
 import '../../app/provider_store.dart';
 import '../../app/reading_prefs.dart';
+import '../../app/reading_stats.dart';
+import '../../core/types.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, this.services});
@@ -106,6 +108,36 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.only(top: 8, bottom: 48),
         children: [
           _section('阅读偏好', '全局默认值；阅读器内仍可临时调整当前书稿。'),
+          _section('阅读统计', '只记录本地阅读会话，不上传内容或阅读轨迹。'),
+          if (widget.services != null)
+            Card(
+              child: FutureBuilder<List<Work>>(
+                future: widget.services!.repository.listWorks(),
+                builder: (context, snapshot) {
+                  final works = snapshot.data ?? const <Work>[];
+                  var minutes = 0;
+                  var streak = 0;
+                  for (final work in works) {
+                    final stats = readReadingStats(work.settings);
+                    minutes += stats.minutes;
+                    if (stats.streakDays > streak) streak = stats.streakDays;
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _Stat(value: '$minutes', label: '累计分钟'),
+                        ),
+                        Expanded(
+                          child: _Stat(value: '$streak', label: '连续天数'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
           Card(
             child: Column(
               children: [
@@ -223,6 +255,31 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     ),
+  );
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.value, required this.label});
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Text(
+        value,
+        style: MarginalTheme.serif.copyWith(
+          fontSize: 26,
+          fontWeight: FontWeight.w700,
+          color: MarginalColors.accent,
+        ),
+      ),
+      const SizedBox(height: 3),
+      Text(
+        label,
+        style: const TextStyle(fontSize: 12, color: MarginalColors.muted),
+      ),
+    ],
   );
 }
 
