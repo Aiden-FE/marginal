@@ -55,6 +55,9 @@ class _LibraryPageState extends State<LibraryPage> {
   Map<String, List<Chapter>> _chaptersByWork = const {};
   String? _filter; // null=全部，_ungroupedKey=未分组，其余为分组名
   String _query = '';
+  Set<String>? _fullTextMatches;
+  int _searchGeneration = 0;
+  bool _searching = false;
   bool _importing = false;
   bool _showUnreadOnly = false;
   String _stage = ImportStages.readFile;
@@ -110,11 +113,12 @@ class _LibraryPageState extends State<LibraryPage> {
     if (query.isEmpty) return true;
     final chapters = _chaptersByWork[work.id] ?? const <Chapter>[];
     return [
-      work.title,
-      work.author,
-      _groupOf(work),
-      ...chapters.map((chapter) => chapter.title),
-    ].any((value) => value.toLowerCase().contains(query));
+          work.title,
+          work.author,
+          _groupOf(work),
+          ...chapters.map((chapter) => chapter.title),
+        ].any((value) => value.toLowerCase().contains(query)) ||
+        (_fullTextMatches?.contains(work.id) ?? false);
   }
 
   List<Work> get _visibleWorks {
@@ -180,7 +184,33 @@ class _LibraryPageState extends State<LibraryPage> {
       ),
     );
     if (result == null || !mounted) return;
-    setState(() => _query = result);
+    final query = result.trim();
+    final generation = ++_searchGeneration;
+    setState(() {
+      _query = query;
+      _fullTextMatches = query.isEmpty ? <String>{} : null;
+      _searching = query.isNotEmpty;
+    });
+    if (query.isEmpty) return;
+    final matches = <String>{};
+    final lower = query.toLowerCase();
+    for (final work in _works) {
+      final chapters = _chaptersByWork[work.id] ?? const <Chapter>[];
+      for (final chapter in chapters) {
+        final text = await widget.services.repository.getChapterText(
+          chapter.id,
+        );
+        if (text.toLowerCase().contains(lower)) {
+          matches.add(work.id);
+          break;
+        }
+      }
+    }
+    if (!mounted || generation != _searchGeneration) return;
+    setState(() {
+      _fullTextMatches = matches;
+      _searching = false;
+    });
   }
 
   Future<void> _import() async {
@@ -995,7 +1025,9 @@ class _LibraryPageState extends State<LibraryPage> {
                           onPressed: _showSearch,
                           icon: const Icon(Icons.search_rounded, size: 18),
                           label: Text(
-                            _query.isEmpty ? '搜索书名、作者、分组或章节' : _query,
+                            _searching
+                                ? '正在搜索全文…'
+                                : (_query.isEmpty ? '搜索书名、作者、分组或章节' : _query),
                             overflow: TextOverflow.ellipsis,
                           ),
                           style: OutlinedButton.styleFrom(
@@ -1011,7 +1043,12 @@ class _LibraryPageState extends State<LibraryPage> {
                         tooltip: '清除搜索',
                         onPressed: _query.isEmpty
                             ? null
-                            : () => setState(() => _query = ''),
+                            : () => setState(() {
+                                _query = '';
+                                _fullTextMatches = <String>{};
+                                _searching = false;
+                                _searchGeneration++;
+                              }),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
@@ -1071,6 +1108,8 @@ class _LibraryPageState extends State<LibraryPage> {
               Expanded(
                 child: _works.isEmpty
                     ? const Center(child: Text('还没有书稿。导入一本 TXT 开始阅读。'))
+                    : _searching
+                    ? const Center(child: CircularProgressIndicator())
                     : visible.isEmpty
                     ? Center(
                         child: Text(
