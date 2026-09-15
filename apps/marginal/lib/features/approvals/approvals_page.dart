@@ -41,6 +41,15 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
             '段落 ${(raw as Map)['paraIndex']}: “${raw['original']}” → “${raw['replacement']}”',
         ];
       }
+      if (p.type == 'chapter_split') {
+        final chapters = (j['chapters'] as List? ?? const []);
+        return [
+          '原章节：${j['sourceChapterId'] ?? '未知'}',
+          '拟拆分为 ${chapters.length} 章',
+          for (var i = 0; i < chapters.length; i++)
+            '第 ${i + 1} 章：${(chapters[i] as Map)['title'] ?? '未命名'}',
+        ];
+      }
       return ['类型：${p.type}', '操作：${j['operation'] ?? j['action'] ?? '结构化提案'}'];
     } catch (_) {
       return ['无效提案数据'];

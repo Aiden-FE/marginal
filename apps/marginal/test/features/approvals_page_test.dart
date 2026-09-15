@@ -51,6 +51,39 @@ void main() {
     expect(find.textContaining('a'), findsWidgets);
   });
 
+  testWidgets('shows a chapter split proposal as a concrete structure diff', (
+    tester,
+  ) async {
+    final services = await seed([
+      Proposal(
+        id: 'split',
+        workId: 'w',
+        type: 'chapter_split',
+        payload: jsonEncode({
+          'sourceChapterId': 'c',
+          'chapters': [
+            {'title': '第一段', 'text': 'a'},
+            {'title': '第二段', 'text': 'b'},
+          ],
+        }),
+      ),
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ApprovalsPage(
+          services: services,
+          work: const Work(id: 'w', title: 'w'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('原章节：c'), findsOneWidget);
+    expect(find.text('拟拆分为 2 章'), findsOneWidget);
+    expect(find.text('第 1 章：第一段'), findsOneWidget);
+    expect(find.text('第 2 章：第二段'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNothing);
+  });
+
   testWidgets('batch approve only applies safe text repair types', (
     tester,
   ) async {
