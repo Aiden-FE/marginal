@@ -56,6 +56,8 @@ abstract class Repository {
   Future<void> putAgentRun(AgentRun value);
   Future<List<RepairRun>> listRepairRuns(String workId);
   Future<void> putRepairRun(RepairRun value);
+  Future<List<RepairJob>> listRepairJobs(String workId);
+  Future<void> putRepairJob(RepairJob value);
   Future<List<ToolCall>> listToolCalls(String runId);
   Future<void> putToolCall(ToolCall value);
   Future<void> putBlob(BlobRec blob, Uint8List data);

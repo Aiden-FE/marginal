@@ -145,6 +145,48 @@ void main() {
       expect(anchors.single.targetId, blobs.single.id);
     });
 
+    test('EPUB 保留英文、列表与脚注语义', () async {
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile(
+            'META-INF/container.xml',
+            100,
+            utf8.encode(
+              '<container><rootfile full-path="book.opf"/></container>',
+            ),
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'book.opf',
+            160,
+            utf8.encode(
+              '<package><manifest><item id="c" href="c.xhtml"/></manifest><spine><itemref idref="c"/></spine></package>',
+            ),
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'c.xhtml',
+            220,
+            utf8.encode(
+              '<html><title>Test</title><body><p>The Adventure</p><ul><li>First</li><li>Second</li></ul><p>See <a epub:type="noteref">1</a></p><aside epub:type="footnote">Footnote text</aside></body></html>',
+            ),
+          ),
+        );
+      final repo = MemoryRepository();
+      final work = await ImportService(repo).importEpub(
+        'test.epub',
+        Uint8List.fromList(ZipEncoder().encode(archive)),
+      );
+      final chapter = (await repo.listChapters(work.id)).single;
+      final text = await repo.getChapterText(chapter.id);
+      expect(text, contains('The Adventure'));
+      expect(text, contains('• First'));
+      expect(text, contains('[1]'));
+      expect(text, contains('脚注：Footnote text'));
+    });
+
     test('空 TXT 拒绝导入且不写库', () async {
       final repo = MemoryRepository();
       await repo.init();

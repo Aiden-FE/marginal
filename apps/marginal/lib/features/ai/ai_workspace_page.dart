@@ -4,6 +4,7 @@ import '../../app/approval_service.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/platform_services.dart';
 import '../../app/provider_store.dart';
+import '../../app/repair_queue.dart';
 import '../../core/types.dart';
 import '../agent/agent_page.dart';
 import '../approvals/approvals_page.dart';
@@ -39,6 +40,9 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
     final revisions = <String, List<Revision>>{};
     final repairRuns = <String, List<RepairRun>>{};
     for (final work in works) {
+      await RepairQueue(
+        widget.services.repository,
+      ).recoverInterrupted(work.id, now: DateTime.now().millisecondsSinceEpoch);
       final workProposals = await widget.services.repository.listProposals(
         work.id,
       );

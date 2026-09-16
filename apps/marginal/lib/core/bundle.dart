@@ -83,6 +83,9 @@ Uint8List buildBundle(
     repairRuns: (j['repairRuns'] as List? ?? [])
         .map((x) => RepairRun.fromJson(Map<String, dynamic>.from(x)))
         .toList(),
+    repairJobs: (j['repairJobs'] as List? ?? [])
+        .map((x) => RepairJob.fromJson(Map<String, dynamic>.from(x)))
+        .toList(),
     entityCards: (j['entityCards'] as List? ?? [])
         .map((x) => EntityCard.fromJson(Map<String, dynamic>.from(x)))
         .toList(),
@@ -105,6 +108,7 @@ BundleData reidForCopy(BundleData d) {
   final cm = {for (final c in d.chapters) c.id: '$workId-${c.id}'};
   final rm = {for (final r in d.runs) r.id: '$workId-${r.id}'};
   final rrm = {for (final r in d.repairRuns) r.id: '$workId-${r.id}'};
+  final rjm = {for (final j in d.repairJobs) j.id: '$workId-${j.id}'};
   final bm = {for (final b in d.blobs) b.id: '$workId-${b.id}'};
   final pm = {for (final p in d.prompts) p.id: '$workId-${p.id}'};
   final em = {for (final e in d.entityCards) e.id: '$workId-${e.id}'};
@@ -228,6 +232,24 @@ BundleData reidForCopy(BundleData d) {
             startedAt: r.startedAt,
             finishedAt: r.finishedAt,
             status: r.status,
+          ),
+        )
+        .toList(),
+    repairJobs: d.repairJobs
+        .map(
+          (j) => RepairJob(
+            id: rjm[j.id]!,
+            workId: workId,
+            runId: rrm[j.runId] ?? j.runId,
+            kind: j.kind,
+            proposalId: propm[j.proposalId] ?? j.proposalId,
+            payload: j.payload,
+            status: j.status,
+            attempts: j.attempts,
+            nextRetryAt: j.nextRetryAt,
+            error: j.error,
+            createdAt: j.createdAt,
+            updatedAt: j.updatedAt,
           ),
         )
         .toList(),

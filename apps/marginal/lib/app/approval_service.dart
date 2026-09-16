@@ -29,6 +29,7 @@ class ApprovalService {
       }
       await repository.updateProposal(_withStatus(p, 'rejected'));
       await _refreshRepairRunStatus(p);
+      await _markRepairJob(p, 'failed');
     });
   }
 
@@ -223,6 +224,19 @@ class ApprovalService {
       ),
     );
     await _refreshRepairRunStatus(p);
+    await _markRepairJob(p, 'applied');
+  }
+
+  Future<void> _markRepairJob(Proposal proposal, String status) async {
+    for (final job in await repository.listRepairJobs(proposal.workId)) {
+      if (job.proposalId != proposal.id) continue;
+      await repository.putRepairJob(
+        job.copyWith(
+          status: status,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+    }
   }
 
   Future<void> _refreshRepairRunStatus(Proposal proposal) async {

@@ -6,6 +6,7 @@ import '../core/agent/agent_runtime.dart';
 import '../core/repository.dart';
 import '../core/types.dart' as domain;
 import 'ids.dart';
+import 'repair_queue.dart';
 
 /// 把 AgentRuntime 的内存事件投影成持久审计记录。
 class AgentExecutionSession {
@@ -51,6 +52,7 @@ class AgentExecutionSession {
         result.status == AgentStatus.failed ||
         result.status == AgentStatus.budgetExceeded) {
       await _expirePendingProposals();
+      await _retryRunningRepairJobs();
       await _finishRepairRun('failed');
     } else {
       await _finishRepairRun('completed');
@@ -113,6 +115,15 @@ class AgentExecutionSession {
         _run = _run.copyWith(lastCheckpoint: encoded);
         await repository.putAgentRun(_run);
       }
+    }
+  }
+
+  Future<void> _retryRunningRepairJobs() async {
+    final queue = RepairQueue(repository);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final job in await repository.listRepairJobs(workId)) {
+      if (job.runId != runId || job.status != 'running') continue;
+      await queue.fail(job, StateError('Agent 未完成'), now);
     }
   }
 

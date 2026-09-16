@@ -346,10 +346,34 @@ class ImportService {
       ),
       '',
     );
-    final withBreaks = withoutStyle.replaceAll(
-      RegExp(r'<br\s*/?>|</p>|</div>|</h[1-6]>', caseSensitive: false),
-      '\n',
-    );
+    final withNotes = withoutStyle
+        .replaceAllMapped(
+          RegExp(
+            r'''<a[^>]*(?:epub:type|class)=["'][^"']*noteref[^"']*["'][^>]*>(.*?)</a>''',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) =>
+              '[${match.group(1)!.replaceAll(RegExp(r'<[^>]+>'), '').trim()}]',
+        )
+        .replaceAllMapped(
+          RegExp(
+            r'''<(?:aside|div)[^>]*(?:epub:type|class)=["'][^"']*footnote[^"']*["'][^>]*>(.*?)</(?:aside|div)>''',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) => '\n脚注：${match.group(1)!}\n',
+        );
+    final withBreaks = withNotes
+        .replaceAll(RegExp(r'<li\b[^>]*>', caseSensitive: false), '\n• ')
+        .replaceAll(
+          RegExp(r'</li>|</blockquote>|</tr>|</h[1-6]>', caseSensitive: false),
+          '\n',
+        )
+        .replaceAll(
+          RegExp(r'<br\s*/?>|</p>|</div>', caseSensitive: false),
+          '\n',
+        );
     final text = withBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
     return _decodeHtmlEntities(text)
         .replaceAll(RegExp(r'[ \t]+'), ' ')

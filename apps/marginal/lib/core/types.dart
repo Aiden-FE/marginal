@@ -374,6 +374,76 @@ class RepairRun {
   );
 }
 
+class RepairJob {
+  const RepairJob({
+    required this.id,
+    required this.workId,
+    required this.runId,
+    required this.kind,
+    this.proposalId = '',
+    this.payload = '',
+    this.status = 'queued',
+    this.attempts = 0,
+    this.nextRetryAt = 0,
+    this.error = '',
+    this.createdAt = 0,
+    this.updatedAt = 0,
+  });
+  final String id, workId, runId, kind, proposalId, payload, status, error;
+  final int attempts, nextRetryAt, createdAt, updatedAt;
+
+  RepairJob copyWith({
+    String? proposalId,
+    String? status,
+    int? attempts,
+    int? nextRetryAt,
+    String? error,
+    int? updatedAt,
+  }) => RepairJob(
+    id: id,
+    workId: workId,
+    runId: runId,
+    kind: kind,
+    proposalId: proposalId ?? this.proposalId,
+    payload: payload,
+    status: status ?? this.status,
+    attempts: attempts ?? this.attempts,
+    nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+    error: error ?? this.error,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workId': workId,
+    'runId': runId,
+    'kind': kind,
+    'proposalId': proposalId,
+    'payload': payload,
+    'status': status,
+    'attempts': attempts,
+    'nextRetryAt': nextRetryAt,
+    'error': error,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+  };
+  factory RepairJob.fromJson(Map<String, dynamic> j) => RepairJob(
+    id: j['id'],
+    workId: j['workId'],
+    runId: j['runId'] ?? '',
+    kind: j['kind'] ?? 'content',
+    proposalId: j['proposalId'] ?? '',
+    payload: j['payload'] ?? '',
+    status: j['status'] ?? 'queued',
+    attempts: j['attempts'] ?? 0,
+    nextRetryAt: j['nextRetryAt'] ?? 0,
+    error: j['error'] ?? '',
+    createdAt: j['createdAt'] ?? 0,
+    updatedAt: j['updatedAt'] ?? 0,
+  );
+}
+
 class AgentRun {
   final String id, workId, status;
   final int startedAt;
@@ -637,6 +707,7 @@ class BundleData {
   final List<ToolCall> toolCalls;
   final List<Revision> revisions;
   final List<RepairRun> repairRuns;
+  final List<RepairJob> repairJobs;
   final List<EntityCard> entityCards;
   final List<Illustration> illustrations;
   const BundleData({
@@ -651,6 +722,7 @@ class BundleData {
     this.toolCalls = const [],
     this.revisions = const [],
     this.repairRuns = const [],
+    this.repairJobs = const [],
     this.entityCards = const [],
     this.illustrations = const [],
   });
@@ -666,6 +738,7 @@ class BundleData {
     'toolCalls': toolCalls.map((x) => x.toJson()).toList(),
     'revisions': revisions.map((x) => x.toJson()).toList(),
     'repairRuns': repairRuns.map((x) => x.toJson()).toList(),
+    'repairJobs': repairJobs.map((x) => x.toJson()).toList(),
     'entityCards': entityCards.map((x) => x.toJson()).toList(),
     'illustrations': illustrations.map((x) => x.toJson()).toList(),
   };

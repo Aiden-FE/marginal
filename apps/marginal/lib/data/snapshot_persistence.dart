@@ -67,6 +67,11 @@ mixin SnapshotPersistence on MemoryRepository {
           RepairRun.fromJson(Map<String, dynamic>.from(raw as Map)),
         );
       }
+      for (final raw in (root['repairJobs'] as List? ?? const [])) {
+        await super.putRepairJob(
+          RepairJob.fromJson(Map<String, dynamic>.from(raw as Map)),
+        );
+      }
       for (final raw in (root['runs'] as List? ?? const [])) {
         await super.putAgentRun(
           AgentRun.fromJson(Map<String, dynamic>.from(raw as Map)),
@@ -105,6 +110,7 @@ mixin SnapshotPersistence on MemoryRepository {
     final illustrations = <Illustration>[];
     final revisions = <Revision>[];
     final repairRuns = <RepairRun>[];
+    final repairJobs = <RepairJob>[];
     final runs = <AgentRun>[];
     final calls = <ToolCall>[];
     final blobs = <BlobRec>[];
@@ -122,6 +128,7 @@ mixin SnapshotPersistence on MemoryRepository {
       illustrations.addAll(await listIllustrations(work.id));
       revisions.addAll(await listRevisions(work.id));
       repairRuns.addAll(await listRepairRuns(work.id));
+      repairJobs.addAll(await listRepairJobs(work.id));
       final workRuns = await listAgentRuns(work.id);
       runs.addAll(workRuns);
       for (final run in workRuns) {
@@ -146,6 +153,7 @@ mixin SnapshotPersistence on MemoryRepository {
       'illustrations': illustrations.map((x) => x.toJson()).toList(),
       'revisions': revisions.map((x) => x.toJson()).toList(),
       'repairRuns': repairRuns.map((x) => x.toJson()).toList(),
+      'repairJobs': repairJobs.map((x) => x.toJson()).toList(),
       'runs': runs.map((x) => x.toJson()).toList(),
       'toolCalls': calls.map((x) => x.toJson()).toList(),
       'blobs': blobs.map((x) => x.toJson()).toList(),
@@ -226,6 +234,9 @@ mixin SnapshotPersistence on MemoryRepository {
   @override
   Future<void> putRepairRun(RepairRun value) =>
       _persistAfter(() => super.putRepairRun(value));
+  @override
+  Future<void> putRepairJob(RepairJob value) =>
+      _persistAfter(() => super.putRepairJob(value));
   @override
   Future<void> putToolCall(ToolCall value) =>
       _persistAfter(() => super.putToolCall(value));

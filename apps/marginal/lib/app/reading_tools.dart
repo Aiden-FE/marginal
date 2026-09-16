@@ -136,6 +136,19 @@ ToolRegistry readingTools({
           createdAt: DateTime.now().millisecondsSinceEpoch,
         );
         await repository.putProposal(p);
+        await repository.putRepairJob(
+          RepairJob(
+            id: 'job-${p.id}',
+            workId: workId,
+            runId: runId,
+            kind: p.type,
+            proposalId: p.id,
+            payload: p.payload,
+            status: 'awaiting_approval',
+            createdAt: p.createdAt,
+            updatedAt: p.createdAt,
+          ),
+        );
         return {'proposalId': p.id, 'status': 'pending'};
       },
     ),
@@ -170,6 +183,19 @@ ToolRegistry readingTools({
           createdAt: DateTime.now().millisecondsSinceEpoch,
         );
         await repository.putProposal(p);
+        await repository.putRepairJob(
+          RepairJob(
+            id: 'job-${p.id}',
+            workId: workId,
+            runId: runId,
+            kind: p.type,
+            proposalId: p.id,
+            payload: p.payload,
+            status: 'awaiting_approval',
+            createdAt: p.createdAt,
+            updatedAt: p.createdAt,
+          ),
+        );
         return {'proposalId': p.id, 'status': 'pending'};
       },
     ),

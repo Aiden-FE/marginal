@@ -48,6 +48,9 @@ class SqliteRepository implements Repository {
       'CREATE TABLE IF NOT EXISTS repair_runs(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
     );
     db.execute(
+      'CREATE TABLE IF NOT EXISTS repair_jobs(id TEXT PRIMARY KEY, work_id TEXT NOT NULL, json TEXT NOT NULL)',
+    );
+    db.execute(
       'CREATE TABLE IF NOT EXISTS tool_calls(id TEXT PRIMARY KEY, run_id TEXT NOT NULL, json TEXT NOT NULL)',
     );
     db.execute(
@@ -127,6 +130,7 @@ class SqliteRepository implements Repository {
       'illustrations',
       'agent_runs',
       'repair_runs',
+      'repair_jobs',
       'blobs',
     ]) {
       db.execute('DELETE FROM $table WHERE work_id=?', [id]);
@@ -357,6 +361,14 @@ class SqliteRepository implements Repository {
     [value.id, value.workId, _enc(value.toJson())],
   );
   @override
+  Future<List<RepairJob>> listRepairJobs(String workId) =>
+      _list('repair_jobs', workId, (s) => RepairJob.fromJson(_dec(s)));
+  @override
+  Future<void> putRepairJob(RepairJob value) async => db.execute(
+    'INSERT INTO repair_jobs(id,work_id,json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET work_id=excluded.work_id,json=excluded.json',
+    [value.id, value.workId, _enc(value.toJson())],
+  );
+  @override
   Future<List<ToolCall>> listToolCalls(String runId) async => db
       .select('SELECT json FROM tool_calls WHERE run_id=?', [runId])
       .map((r) => ToolCall.fromJson(_dec(r['json'] as String)))
@@ -393,6 +405,7 @@ class SqliteRepository implements Repository {
     final chapters = await listChapters(workId);
     final runs = await listAgentRuns(workId);
     final repairRuns = await listRepairRuns(workId);
+    final repairJobs = await listRepairJobs(workId);
     return BundleData(
       work: work,
       chapters: chapters,
@@ -406,6 +419,7 @@ class SqliteRepository implements Repository {
       illustrations: await listIllustrations(workId),
       runs: runs,
       repairRuns: repairRuns,
+      repairJobs: repairJobs,
       toolCalls: [for (final r in runs) ...await listToolCalls(r.id)],
     );
   }
@@ -449,6 +463,9 @@ class SqliteRepository implements Repository {
       for (final r in payload.repairRuns) {
         await putRepairRun(r);
       }
+      for (final j in payload.repairJobs) {
+        await putRepairJob(j);
+      }
       for (final c in payload.toolCalls) {
         await putToolCall(c);
       }
@@ -471,6 +488,7 @@ class SqliteRepository implements Repository {
         'tool_calls',
         'agent_runs',
         'repair_runs',
+        'repair_jobs',
         'proposals',
         'revisions',
         'entity_cards',
