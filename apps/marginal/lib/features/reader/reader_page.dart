@@ -78,7 +78,7 @@ class ReaderPage extends StatefulWidget {
 }
 
 class _ReaderPageState extends State<ReaderPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _chromeTimeout = Duration(milliseconds: 3500);
   static const _chromeDuration = Duration(milliseconds: 250);
   static const _chapterDwell = Duration(milliseconds: 1500);
@@ -89,6 +89,8 @@ class _ReaderPageState extends State<ReaderPage>
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _paraKeys = {};
   late final DateTime _sessionStartedAt = DateTime.now();
+  late DateTime _statsFlushedAt = _sessionStartedAt;
+  Timer? _statsHeartbeat;
 
   List<Chapter> _chapters = const [];
   List<String> _paragraphs = const [];
@@ -169,6 +171,11 @@ class _ReaderPageState extends State<ReaderPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _statsHeartbeat = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _flushReadingStats(),
+    );
     _scrollController.addListener(_onScroll);
     _autoTicker = createTicker(_onAutoTick);
     _bumpChrome();
@@ -177,11 +184,9 @@ class _ReaderPageState extends State<ReaderPage>
 
   @override
   void dispose() {
-    final minutes = DateTime.now().difference(_sessionStartedAt).inMinutes;
-    if (minutes > 0) {
-      recordReadingMinutes(_settings, now: DateTime.now(), minutes: minutes);
-      _persistSettings();
-    }
+    _flushReadingStats();
+    _statsHeartbeat?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _chromeTimer?.cancel();
     _autoTicker?.dispose();
     _displayWorkRatio.dispose();
@@ -189,6 +194,25 @@ class _ReaderPageState extends State<ReaderPage>
     _positionSaveTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _flushReadingStats();
+    }
+  }
+
+  Future<void> _flushReadingStats() async {
+    final now = DateTime.now();
+    final elapsed = now.difference(_statsFlushedAt).inSeconds;
+    if (elapsed < 60) return;
+    final minutes = elapsed ~/ 60;
+    recordReadingMinutes(_settings, now: now, minutes: minutes);
+    _statsFlushedAt = _statsFlushedAt.add(Duration(minutes: minutes));
+    await _persistSettings();
   }
 
   // ---- 数据装载 ----

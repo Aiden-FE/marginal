@@ -25,6 +25,43 @@ class RepairQueue {
     });
   }
 
+  Future<RepairJob?> processNext(
+    String workId, {
+    required int now,
+    required Future<String?> Function(RepairJob job) execute,
+  }) async {
+    final job = await claimNext(workId, now: now);
+    if (job == null) return null;
+    try {
+      if (job.proposalId.isNotEmpty) {
+        final proposals = await repository.listProposals(workId);
+        if (proposals.any((proposal) => proposal.id == job.proposalId)) {
+          final awaiting = job.copyWith(
+            status: 'awaiting_approval',
+            updatedAt: now,
+          );
+          await repository.putRepairJob(awaiting);
+          return awaiting;
+        }
+      }
+      final proposalId = await execute(job);
+      if (proposalId == null || proposalId.isEmpty) {
+        throw StateError('repair job did not create a proposal');
+      }
+      final awaiting = job.copyWith(
+        proposalId: proposalId,
+        status: 'awaiting_approval',
+        updatedAt: now,
+      );
+      await repository.putRepairJob(awaiting);
+      return awaiting;
+    } catch (error) {
+      await fail(job, error, now);
+      return (await repository.listRepairJobs(workId))
+          .firstWhere((item) => item.id == job.id);
+    }
+  }
+
   Future<void> markAwaitingApproval(
     RepairJob job,
     String proposalId,

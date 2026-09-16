@@ -36,6 +36,34 @@ void main() {
     expect(retry.nextRetryAt, 1010);
   });
 
+  test('worker is idempotent when a proposal already exists', () async {
+    final repo = MemoryRepository();
+    await repo.putWork(const Work(id: 'w', title: 'w'));
+    await repo.putRepairJob(
+      const RepairJob(
+        id: 'j',
+        workId: 'w',
+        runId: 'r',
+        kind: 'content',
+        proposalId: 'p',
+      ),
+    );
+    await repo.putProposal(
+      const Proposal(id: 'p', workId: 'w', type: 'text_repair', payload: '{}'),
+    );
+    var executions = 0;
+    final job = await RepairQueue(repo).processNext(
+      'w',
+      now: 1,
+      execute: (_) async {
+        executions++;
+        return 'new';
+      },
+    );
+    expect(job!.status, 'awaiting_approval');
+    expect(executions, 0);
+  });
+
   test('recover requeues interrupted running jobs', () async {
     final repo = MemoryRepository();
     await repo.putWork(const Work(id: 'w', title: 'w'));
