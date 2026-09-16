@@ -1125,17 +1125,6 @@ class _ReaderPageState extends State<ReaderPage>
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
             _buildBottomChrome(context, palette),
-          if (_fidelityMode && _fidelitySrcdoc != null)
-            Positioned(
-              top: MediaQuery.paddingOf(context).top + 72,
-              right: 16,
-              child: FilledButton.tonalIcon(
-                key: const Key('reader-exit-fidelity'),
-                onPressed: () => unawaited(_setFidelityMode(false)),
-                icon: const Icon(Icons.text_snippet_outlined),
-                label: const Text('语义版'),
-              ),
-            ),
         ],
       ),
     );
@@ -1203,18 +1192,19 @@ class _ReaderPageState extends State<ReaderPage>
   Widget _buildTopChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
     final bookmarked = _isBookmarked(_currentChapter!.id);
+    final visible = _chromeVisible || _fidelityMode;
     return Positioned(
       key: const Key('reader-top-chrome'),
       top: 0,
       left: 0,
       right: 0,
       child: IgnorePointer(
-        ignoring: !_chromeVisible,
+        ignoring: !visible,
         child: AnimatedSlide(
-          offset: _chromeVisible ? Offset.zero : const Offset(0, -1),
+          offset: visible ? Offset.zero : const Offset(0, -1),
           duration: _chromeDuration,
           child: AnimatedOpacity(
-            opacity: _chromeVisible ? 1 : 0,
+            opacity: visible ? 1 : 0,
             duration: _chromeDuration,
             child: Material(
               color: palette.chrome,
@@ -1254,6 +1244,23 @@ class _ReaderPageState extends State<ReaderPage>
                         ],
                       ),
                     ),
+                    if (_fidelityMode)
+                      TextButton(
+                        key: const Key('reader-exit-fidelity'),
+                        onPressed: () => unawaited(_setFidelityMode(false)),
+                        style: TextButton.styleFrom(
+                          foregroundColor: foreground,
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text(
+                          '语义版',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ChromeIconButton(
                       key: const Key('reader-chapter-favorite'),
                       tooltip: bookmarked ? '已收藏' : '收藏本章',
