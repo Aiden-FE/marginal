@@ -1121,9 +1121,13 @@ class _ReaderPageState extends State<ReaderPage>
                         : _buildContent(palette),
                   ),
           ),
+          if (!_loading && _chapters.isNotEmpty)
+            _buildTopChrome(context, palette),
+          if (!_loading && _chapters.isNotEmpty)
+            _buildBottomChrome(context, palette),
           if (_fidelityMode && _fidelitySrcdoc != null)
             Positioned(
-              top: MediaQuery.paddingOf(context).top + 64,
+              top: MediaQuery.paddingOf(context).top + 72,
               right: 16,
               child: FilledButton.tonalIcon(
                 key: const Key('reader-exit-fidelity'),
@@ -1132,10 +1136,6 @@ class _ReaderPageState extends State<ReaderPage>
                 label: const Text('语义版'),
               ),
             ),
-          if (!_loading && _chapters.isNotEmpty)
-            _buildTopChrome(context, palette),
-          if (!_loading && _chapters.isNotEmpty)
-            _buildBottomChrome(context, palette),
         ],
       ),
     );

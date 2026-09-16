@@ -49298,14 +49298,14 @@ $3$onProgress(a,b,c){return this.I(this,A.M("call","$3$onProgress",0,[a,b,c],["o
 $3$blobData$copy(a,b,c){return this.I(this,A.M("call","$3$blobData$copy",0,[a,b,c],["blobData","copy"],0))},
 $1$size(a){return this.I(this,A.M("call","$1$size",0,[a],["size"],0))},
 $2$length$position(a,b){return this.I(this,A.M("call","$2$length$position",0,[a,b],["length","position"],0))},
+$3$restorePosition(a,b,c){return this.I(this,A.M("call","$3$restorePosition",0,[a,b,c],["restorePosition"],0))},
+$2$ratio(a,b){return this.I(this,A.M("call","$2$ratio",0,[a,b],["ratio"],0))},
 $2$isClosing(a,b){return this.I(this,A.M("call","$2$isClosing",0,[a,b],["isClosing"],0))},
 $2$fontSize$fontWeight(a,b){return this.I(this,A.M("call","$2$fontSize$fontWeight",0,[a,b],["fontSize","fontWeight"],0))},
 $1$foregroundColor(a){return this.I(this,A.M("call","$1$foregroundColor",0,[a],["foregroundColor"],0))},
 $1$maxScaleFactor(a){return this.I(this,A.M("call","$1$maxScaleFactor",0,[a],["maxScaleFactor"],0))},
 $1$isSlider(a){return this.I(this,A.M("call","$1$isSlider",0,[a],["isSlider"],0))},
 $3$isDiscrete$parentBox$sliderTheme(a,b,c){return this.I(this,A.M("call","$3$isDiscrete$parentBox$sliderTheme",0,[a,b,c],["isDiscrete","parentBox","sliderTheme"],0))},
-$3$restorePosition(a,b,c){return this.I(this,A.M("call","$3$restorePosition",0,[a,b,c],["restorePosition"],0))},
-$2$ratio(a,b){return this.I(this,A.M("call","$2$ratio",0,[a,b],["ratio"],0))},
 $2$offset(a,b){return this.I(this,A.M("call","$2$offset",0,[a,b],["offset"],0))},
 $2$orElse(a,b){return this.I(this,A.M("call","$2$orElse",0,[a,b],["orElse"],0))},
 $3$targetRatio(a,b,c){return this.I(this,A.M("call","$3$targetRatio",0,[a,b,c],["targetRatio"],0))},
@@ -112209,10 +112209,10 @@ r=q.ch
 r.toString
 s=new A.Uy(r,new A.bM(s,t.O))}else s=q.aix(o)
 s=A.wW(s,o.a,!0)}s=A.b([A.aqh(0,s)],t.p)
-if(q.ay&&q.ch!=null){r=A.bD(a,B.bA,t.w).w
-s.push(A.pR(p,A.b_Z(B.NL,B.ald,B.aie,new A.aMC(q)),p,p,p,16,r.r.b+64,p))}if(!q.db&&J.i2(q.x))s.push(q.aiO(a,o))
+if(!q.db&&J.i2(q.x))s.push(q.aiO(a,o))
 if(!q.db&&J.i2(q.x))s.push(q.aiv(a,o))
-return A.nG(p,p,A.hN(B.bI,s,B.D,B.br,p),p,p)},
+if(q.ay&&q.ch!=null){r=A.bD(a,B.bA,t.w).w
+s.push(A.pR(p,A.b_Z(B.NL,B.ald,B.aie,new A.aMC(q)),p,p,p,16,r.r.b+72,p))}return A.nG(p,p,A.hN(B.bI,s,B.D,B.br,p),p,p)},
 aix(a){var s,r,q=this,p=null,o=q.c
 o.toString
 s=t.w
