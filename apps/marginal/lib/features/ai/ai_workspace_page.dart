@@ -25,6 +25,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
   Map<String, List<Proposal>> _proposalsByWork = const {};
   Map<String, List<Revision>> _revisionsByWork = const {};
   Map<String, List<RepairRun>> _repairRunsByWork = const {};
+  Map<String, List<RepairJob>> _repairJobsByWork = const {};
   bool _loading = true;
 
   @override
@@ -39,6 +40,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
     final proposals = <String, List<Proposal>>{};
     final revisions = <String, List<Revision>>{};
     final repairRuns = <String, List<RepairRun>>{};
+    final repairJobs = <String, List<RepairJob>>{};
     for (final work in works) {
       await RepairQueue(
         widget.services.repository,
@@ -56,6 +58,9 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
       repairRuns[work.id] = await widget.services.repository.listRepairRuns(
         work.id,
       );
+      repairJobs[work.id] = await widget.services.repository.listRepairJobs(
+        work.id,
+      );
     }
     if (!mounted) return;
     setState(() {
@@ -64,6 +69,7 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
       _proposalsByWork = proposals;
       _revisionsByWork = revisions;
       _repairRunsByWork = repairRuns;
+      _repairJobsByWork = repairJobs;
       _loading = false;
     });
   }
@@ -113,6 +119,47 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
     );
     if (!mounted || work == null) return;
     await _openWork(work, approvals: approvals);
+  }
+
+  Future<void> _processQueuedJob(Work work, {String? jobId}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (jobId != null) {
+      final jobs = await widget.services.repository.listRepairJobs(work.id);
+      final job = jobs.firstWhere((item) => item.id == jobId);
+      await widget.services.repository.putRepairJob(
+        job.copyWith(
+          status: 'queued',
+          nextRetryAt: now,
+          error: '',
+          updatedAt: now,
+        ),
+      );
+    }
+    await RepairQueue(widget.services.repository).processNext(
+      work.id,
+      now: now,
+      execute: (job) async {
+        final existing = (await widget.services.repository.listProposals(
+          work.id,
+        )).where((proposal) => proposal.id == job.proposalId).firstOrNull;
+        if (existing != null) return existing.id;
+        final proposalId = job.proposalId.isEmpty
+            ? 'proposal-${job.id}'
+            : job.proposalId;
+        await widget.services.repository.putProposal(
+          Proposal(
+            id: proposalId,
+            workId: work.id,
+            runId: job.runId,
+            type: job.kind,
+            payload: job.payload,
+            createdAt: now,
+          ),
+        );
+        return proposalId;
+      },
+    );
+    await _load();
   }
 
   Future<void> _rollbackRun(Work work, String runId) async {
@@ -187,12 +234,30 @@ class _AiWorkspacePageState extends State<AiWorkspacePage> {
               subtitle: Text(
                 '${repairRun.kind == 'structure' ? '结构' : '内容'} · ${repairRun.status} · 提案 ${batch.length} · 已批准 $approved · 待处理 $pending',
               ),
-              trailing: canRollback
-                  ? TextButton(
-                      onPressed: () => _rollbackRun(work, runId),
-                      child: const Text('回滚'),
+              trailing: () {
+                final jobs = _repairJobsByWork[work.id] ?? const <RepairJob>[];
+                final retryable = jobs
+                    .where(
+                      (job) =>
+                          job.runId == runId &&
+                          (job.status == 'failed' || job.status == 'queued'),
                     )
-                  : null,
+                    .firstOrNull;
+                if (retryable != null) {
+                  return TextButton(
+                    onPressed: () =>
+                        _processQueuedJob(work, jobId: retryable.id),
+                    child: const Text('重试'),
+                  );
+                }
+                if (canRollback) {
+                  return TextButton(
+                    onPressed: () => _rollbackRun(work, runId),
+                    child: const Text('回滚'),
+                  );
+                }
+                return null;
+              }(),
               onTap: () => _openWork(work, approvals: true),
             ),
           ),
