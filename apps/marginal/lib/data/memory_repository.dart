@@ -21,6 +21,40 @@ class MemoryRepository implements Repository {
   final Map<String, Uint8List> _blobData = {};
   @override
   String get engine => 'memory';
+
+  int _transactionDepth = 0;
+
+  @override
+  Future<T> runInTransaction<T>(Future<T> Function() action) async {
+    if (_transactionDepth > 0) return action();
+    final snapshots = <({BundleData data, Map<String, Uint8List> blobData})>[];
+    for (final work in await listWorks()) {
+      final data = await exportAll(work.id);
+      final bytes = <String, Uint8List>{};
+      for (final blob in data.blobs) {
+        bytes[blob.storageKey] =
+            await getBlobData(blob.storageKey) ?? Uint8List(0);
+      }
+      snapshots.add((data: data, blobData: bytes));
+    }
+    _transactionDepth++;
+    try {
+      return await action();
+    } catch (_) {
+      await wipe();
+      for (final snapshot in snapshots) {
+        await importBundle(
+          snapshot.data,
+          copy: false,
+          blobData: snapshot.blobData,
+        );
+      }
+      rethrow;
+    } finally {
+      _transactionDepth--;
+    }
+  }
+
   @override
   Future<void> init() async {}
   @override
@@ -54,6 +88,21 @@ class MemoryRepository implements Repository {
   @override
   Future<String> getChapterText(String chapterId) async =>
       _texts[chapterId] ?? '';
+  @override
+  Future<String> readChapterRange(
+    String chapterId,
+    int start,
+    int length,
+  ) async {
+    final text = await getChapterText(chapterId);
+    final safeStart = start.clamp(0, text.length);
+    final safeEnd = (safeStart + length.clamp(0, text.length)).clamp(
+      safeStart,
+      text.length,
+    );
+    return text.substring(safeStart, safeEnd);
+  }
+
   @override
   Future<void> putChapter(String workId, Chapter chapter, String text) async {
     if (chapter.workId != workId) throw ArgumentError('workId mismatch');

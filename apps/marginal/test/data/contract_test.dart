@@ -32,6 +32,8 @@ Future<void> runContract(Repository repo) async {
   );
   await repo.putChapter('w1', chapter, '第一段\n\n第二段');
   expect(await repo.getChapterText('c1'), '第一段\n\n第二段');
+  expect(await repo.readChapterRange('c1', 0, 2), '第一');
+  expect(await repo.readChapterRange('c1', 2, 3), '段\n\n');
 
   final blob = BlobRec(
     id: 'b1',

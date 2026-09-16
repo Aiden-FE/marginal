@@ -12,6 +12,23 @@ abstract class Repository {
   Future<void> deleteWork(String id);
   Future<List<Chapter>> listChapters(String workId);
   Future<String> getChapterText(String chapterId);
+
+  /// Reads a bounded UTF-16 range without requiring callers to materialize the full chapter.
+  /// Drivers that cannot range-read may return a substring from their existing text store.
+  Future<String> readChapterRange(
+    String chapterId,
+    int start,
+    int length,
+  ) async {
+    final text = await getChapterText(chapterId);
+    final safeStart = start.clamp(0, text.length);
+    final safeEnd = (safeStart + length.clamp(0, text.length)).clamp(
+      safeStart,
+      text.length,
+    );
+    return text.substring(safeStart, safeEnd);
+  }
+
   Future<void> putChapter(String workId, Chapter chapter, String text);
   Future<void> replaceChapters(
     String workId,
@@ -51,4 +68,8 @@ abstract class Repository {
     Map<String, Uint8List> blobData = const {},
   });
   Future<void> wipe();
+
+  /// Executes a compound mutation as one logical commit. Drivers with native
+  /// transactions provide rollback; lightweight test doubles default to direct execution.
+  Future<T> runInTransaction<T>(Future<T> Function() action) => action();
 }

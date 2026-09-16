@@ -23,11 +23,13 @@ class ApprovalService {
   );
 
   Future<void> reject(Proposal p) async {
-    if (p.status != 'pending') {
-      throw StateError('proposal ${p.id} is not pending');
-    }
-    await repository.updateProposal(_withStatus(p, 'rejected'));
-    await _refreshRepairRunStatus(p);
+    return repository.runInTransaction(() async {
+      if (p.status != 'pending') {
+        throw StateError('proposal ${p.id} is not pending');
+      }
+      await repository.updateProposal(_withStatus(p, 'rejected'));
+      await _refreshRepairRunStatus(p);
+    });
   }
 
   /// 解析提案类型；未知类型抛 [FormatException]，调用方不得将其标为 approved。
@@ -38,6 +40,10 @@ class ApprovalService {
       TextRepairPayload.fromJson(decodeMap(p.payload));
 
   Future<void> approve(Proposal p) async {
+    return repository.runInTransaction(() => _approve(p));
+  }
+
+  Future<void> _approve(Proposal p) async {
     if (p.status != 'pending') {
       throw StateError('proposal ${p.id} is not pending');
     }

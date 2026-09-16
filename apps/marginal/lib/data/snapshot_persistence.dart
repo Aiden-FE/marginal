@@ -7,6 +7,7 @@ import 'memory_repository.dart';
 /// Shared snapshot codec and mutation persistence for durable repositories.
 mixin SnapshotPersistence on MemoryRepository {
   bool _loadingSnapshot = false;
+  int _transactionDepth = 0;
 
   /// Persists the current in-memory state in the driver's storage.
   Future<void> persist();
@@ -154,7 +155,20 @@ mixin SnapshotPersistence on MemoryRepository {
 
   Future<void> _persistAfter(Future<void> Function() operation) async {
     await operation();
-    await persist();
+    if (_transactionDepth == 0 && !_loadingSnapshot) await persist();
+  }
+
+  @override
+  Future<T> runInTransaction<T>(Future<T> Function() action) async {
+    final outermost = _transactionDepth == 0;
+    _transactionDepth++;
+    try {
+      final result = await super.runInTransaction(action);
+      if (outermost) await persist();
+      return result;
+    } finally {
+      _transactionDepth--;
+    }
   }
 
   @override

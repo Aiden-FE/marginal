@@ -201,7 +201,7 @@ class _ReaderPageState extends State<ReaderPage>
     }
     _chapterWeights = [
       for (final chapter in chapters)
-        (await _projectionService.repository.getChapterText(chapter.id)).length,
+        chapter.wordCount > 0 ? chapter.wordCount : 1,
     ];
     // 优先恢复上次阅读位置章节；否则用入口指定章节。
     final position = prefs.loadReadingPosition(_settings);

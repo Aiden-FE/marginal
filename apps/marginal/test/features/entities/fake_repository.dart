@@ -22,6 +22,9 @@ class FakeRepository implements Repository {
 
   @override
   String get engine => 'fake';
+
+  @override
+  Future<T> runInTransaction<T>(Future<T> Function() action) => action();
   @override
   Future<void> init() async {}
   @override
@@ -41,6 +44,21 @@ class FakeRepository implements Repository {
   @override
   Future<String> getChapterText(String chapterId) async =>
       _texts[chapterId] ?? '';
+  @override
+  Future<String> readChapterRange(
+    String chapterId,
+    int start,
+    int length,
+  ) async {
+    final text = await getChapterText(chapterId);
+    final safeStart = start.clamp(0, text.length);
+    final safeEnd = (safeStart + length.clamp(0, text.length)).clamp(
+      safeStart,
+      text.length,
+    );
+    return text.substring(safeStart, safeEnd);
+  }
+
   @override
   Future<void> putChapter(String workId, Chapter chapter, String text) async {
     _chapters[chapter.id] = chapter;

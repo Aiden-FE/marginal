@@ -13,6 +13,7 @@ import '../core/types.dart';
 class SqliteRepository implements Repository {
   final Database db;
   bool _closed = false;
+  int _transactionDepth = 0;
 
   SqliteRepository(this.db) {
     db.execute('PRAGMA journal_mode = WAL;');
@@ -62,6 +63,23 @@ class SqliteRepository implements Repository {
 
   @override
   String get engine => 'sqlite';
+
+  @override
+  Future<T> runInTransaction<T>(Future<T> Function() action) async {
+    if (_transactionDepth > 0) return action();
+    db.execute('BEGIN');
+    _transactionDepth++;
+    try {
+      final result = await action();
+      db.execute('COMMIT');
+      return result;
+    } catch (_) {
+      db.execute('ROLLBACK');
+      rethrow;
+    } finally {
+      _transactionDepth--;
+    }
+  }
 
   @override
   Future<void> init() async {}
@@ -118,12 +136,13 @@ class SqliteRepository implements Repository {
 
   @override
   Future<void> deleteWork(String id) async {
-    db.execute('BEGIN');
+    final outermost = _transactionDepth == 0;
+    if (outermost) db.execute('BEGIN');
     try {
       _deleteWorkSync(id);
-      db.execute('COMMIT');
+      if (outermost) db.execute('COMMIT');
     } catch (_) {
-      db.execute('ROLLBACK');
+      if (outermost) db.execute('ROLLBACK');
       rethrow;
     }
   }
@@ -143,6 +162,21 @@ class SqliteRepository implements Repository {
   }
 
   @override
+  Future<String> readChapterRange(
+    String chapterId,
+    int start,
+    int length,
+  ) async {
+    final safeStart = start.clamp(0, 1 << 30);
+    final safeLength = length.clamp(0, 1 << 30);
+    final rows = db.select(
+      'SELECT substr(text, ?, ?) AS chunk FROM chapters WHERE id=?',
+      [safeStart + 1, safeLength, chapterId],
+    );
+    return rows.isEmpty ? '' : rows.first['chunk'] as String? ?? '';
+  }
+
+  @override
   Future<void> putChapter(String workId, Chapter chapter, String text) async {
     if (chapter.workId != workId) throw ArgumentError('workId mismatch');
     db.execute(
@@ -156,15 +190,16 @@ class SqliteRepository implements Repository {
     String workId,
     List<MapEntry<Chapter, String>> chapters,
   ) async {
-    db.execute('BEGIN');
+    final outermost = _transactionDepth == 0;
+    if (outermost) db.execute('BEGIN');
     try {
       await deleteChapters(workId);
       for (final entry in chapters) {
         await putChapter(workId, entry.key, entry.value);
       }
-      db.execute('COMMIT');
+      if (outermost) db.execute('COMMIT');
     } catch (_) {
-      db.execute('ROLLBACK');
+      if (outermost) db.execute('ROLLBACK');
       rethrow;
     }
   }
@@ -192,15 +227,16 @@ class SqliteRepository implements Repository {
 
   @override
   Future<void> remapAnchors(String workId, List<Anchor> values) async {
-    db.execute('BEGIN');
+    final outermost = _transactionDepth == 0;
+    if (outermost) db.execute('BEGIN');
     try {
       db.execute('DELETE FROM anchors WHERE work_id=?', [workId]);
       for (final value in values) {
         if (value.workId == workId) await putAnchor(value);
       }
-      db.execute('COMMIT');
+      if (outermost) db.execute('COMMIT');
     } catch (_) {
-      db.execute('ROLLBACK');
+      if (outermost) db.execute('ROLLBACK');
       rethrow;
     }
   }
@@ -259,7 +295,8 @@ class SqliteRepository implements Repository {
   );
   @override
   Future<void> deleteEntityCard(String id) async {
-    db.execute('BEGIN');
+    final outermost = _transactionDepth == 0;
+    if (outermost) db.execute('BEGIN');
     try {
       db.execute('DELETE FROM entity_cards WHERE id=?', [id]);
       final rows = db.select('SELECT json FROM illustrations');
@@ -284,9 +321,9 @@ class SqliteRepository implements Repository {
           ),
         );
       }
-      db.execute('COMMIT');
+      if (outermost) db.execute('COMMIT');
     } catch (_) {
-      db.execute('ROLLBACK');
+      if (outermost) db.execute('ROLLBACK');
       rethrow;
     }
   }
@@ -380,7 +417,8 @@ class SqliteRepository implements Repository {
     Map<String, Uint8List> blobData = const {},
   }) async {
     final payload = copy ? reidForCopy(data) : data;
-    db.execute('BEGIN');
+    final outermost = _transactionDepth == 0;
+    if (outermost) db.execute('BEGIN');
     try {
       if (!copy) _deleteWorkSync(payload.work.id);
       await putWork(payload.work);
@@ -417,16 +455,17 @@ class SqliteRepository implements Repository {
       for (final b in payload.blobs) {
         await putBlob(b, blobData[b.storageKey] ?? Uint8List(0));
       }
-      db.execute('COMMIT');
+      if (outermost) db.execute('COMMIT');
     } catch (_) {
-      db.execute('ROLLBACK');
+      if (outermost) db.execute('ROLLBACK');
       rethrow;
     }
   }
 
   @override
   Future<void> wipe() async {
-    db.execute('BEGIN');
+    final outermost = _transactionDepth == 0;
+    if (outermost) db.execute('BEGIN');
     try {
       for (final table in [
         'tool_calls',
@@ -444,9 +483,9 @@ class SqliteRepository implements Repository {
       ]) {
         db.execute('DELETE FROM $table');
       }
-      db.execute('COMMIT');
+      if (outermost) db.execute('COMMIT');
     } catch (_) {
-      db.execute('ROLLBACK');
+      if (outermost) db.execute('ROLLBACK');
       rethrow;
     }
   }
