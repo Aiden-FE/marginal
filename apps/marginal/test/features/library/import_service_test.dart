@@ -37,7 +37,7 @@ Uint8List epubBytes() {
         'OEBPS/content.opf',
         utf8
             .encode(
-              '<package><manifest><item id="c1" href="chapter1.xhtml"/><item id="c2" href="chapter2.xhtml"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>',
+              '<package><manifest><item id="c1" href="chapter1.xhtml"/><item id="c2" href="chapter2.xhtml"/><item id="css" href="styles/book.css" media-type="text/css"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>',
             )
             .length,
         utf8.encode(
@@ -50,11 +50,18 @@ Uint8List epubBytes() {
         'OEBPS/chapter1.xhtml',
         70,
         utf8.encode(
-          '<html><title>第一章</title><body><p>风从门缝吹进来。</p><img src="Images/cover.png"/></body></html>',
+          '<html><head><title>第一章</title><link rel="stylesheet" href="styles/book.css"/></head><body><p>风从门缝吹进来。</p><img src="Images/cover.png"/></body></html>',
         ),
       ),
     )
     ..addFile(ArchiveFile('OEBPS/Images/cover.png', 4, [1, 2, 3, 4]))
+    ..addFile(
+      ArchiveFile(
+        'OEBPS/styles/book.css',
+        20,
+        utf8.encode('p { text-indent: 2em; }'),
+      ),
+    )
     ..addFile(
       ArchiveFile(
         'OEBPS/chapter2.xhtml',
@@ -133,16 +140,43 @@ void main() {
       expect(await repo.getChapterText(chapters.first.id), '风从门缝吹进来。');
       expect(await repo.getChapterText(chapters.last.id), '天亮了。');
       final blobs = await repo.listBlobs(work.id);
-      expect(blobs, hasLength(1));
-      expect(blobs.single.mime, 'image/png');
+      final image = blobs.singleWhere((blob) => blob.kind == 'image');
+      expect(image.mime, 'image/png');
       expect(
-        await repo.getBlobData(blobs.single.storageKey),
+        await repo.getBlobData(image.storageKey),
         Uint8List.fromList([1, 2, 3, 4]),
       );
+
+      final sourceDocuments = blobs
+          .where((blob) => blob.kind == 'epub-xhtml')
+          .toList();
+      final stylesheets = blobs
+          .where((blob) => blob.kind == 'epub-css')
+          .toList();
+      expect(sourceDocuments, hasLength(2));
+      expect(stylesheets, hasLength(1));
+      expect(
+        utf8.decode(
+          (await repo.getBlobData(sourceDocuments.first.storageKey))!,
+        ),
+        contains('<link rel="stylesheet" href="styles/book.css"/>'),
+      );
+      expect(
+        utf8.decode((await repo.getBlobData(stylesheets.single.storageKey))!),
+        'p { text-indent: 2em; }',
+      );
+
       final anchors = await repo.listAnchors(work.id);
-      expect(anchors, hasLength(1));
-      expect(anchors.single.chapterId, chapters.first.id);
-      expect(anchors.single.targetId, blobs.single.id);
+      final imageAnchor = anchors.singleWhere(
+        (anchor) => anchor.targetType == 'illustration',
+      );
+      expect(imageAnchor.chapterId, chapters.first.id);
+      expect(imageAnchor.targetId, image.id);
+      final sourceAnchors = anchors
+          .where((anchor) => anchor.targetType == 'epub-source')
+          .toList();
+      expect(sourceAnchors, hasLength(2));
+      expect(sourceAnchors.map((anchor) => anchor.chapterId), chapters.map((c) => c.id));
     });
 
     test('EPUB 保留英文、列表与脚注语义', () async {
@@ -185,6 +219,63 @@ void main() {
       expect(text, contains('• First'));
       expect(text, contains('[1]'));
       expect(text, contains('脚注：Footnote text'));
+    });
+
+    test('EPUB 固定版式图片页保留为章节并保存原始源', () async {
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile(
+            'META-INF/container.xml',
+            100,
+            utf8.encode(
+              '<container><rootfile full-path="b.opf"/></container>',
+            ),
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'b.opf',
+            160,
+            utf8.encode(
+              '<package><manifest><item id="t" href="t.xhtml"/><item id="p" href="p.xhtml"/><item id="img" href="f.png"/></manifest><spine><itemref idref="t"/><itemref idref="p"/></spine></package>',
+            ),
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            't.xhtml',
+            60,
+            utf8.encode('<html><title>文字</title><body><p>正文</p></body></html>'),
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'p.xhtml',
+            60,
+            utf8.encode(
+              '<html><head><title>插画</title></head><body>'
+              '<svg viewBox="0 0 100 100"/></body></html>',
+            ),
+          ),
+        )
+        ..addFile(ArchiveFile('f.png', 3, [9, 9, 9]));
+      final repo = MemoryRepository();
+      await repo.init();
+      final work = await ImportService(repo).importEpub(
+        '插画.epub',
+        Uint8List.fromList(ZipEncoder().encode(archive)),
+      );
+      final chapters = await repo.listChapters(work.id);
+      expect(chapters, hasLength(2), reason: 'spine 页面不允许静默丢失');
+      expect(chapters.last.title, '插画');
+      expect(
+        await repo.getChapterText(chapters.last.id),
+        contains('原版排版'),
+      );
+      final xhtmlBlobs = (await repo.listBlobs(work.id))
+          .where((blob) => blob.kind == 'epub-xhtml')
+          .toList();
+      expect(xhtmlBlobs, hasLength(2));
     });
 
     test('空 TXT 拒绝导入且不写库', () async {

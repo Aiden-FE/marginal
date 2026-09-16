@@ -20,6 +20,9 @@ class ReaderSettingsSheet extends StatefulWidget {
     required this.onTheme,
     required this.onAutoSpeed,
     required this.onAutoToggle,
+    this.showFidelity = false,
+    this.fidelity = false,
+    this.onFidelityToggle,
   });
 
   final double fontSize;
@@ -32,6 +35,9 @@ class ReaderSettingsSheet extends StatefulWidget {
   final ValueChanged<ReaderTheme> onTheme;
   final ValueChanged<int> onAutoSpeed;
   final ValueChanged<bool> onAutoToggle;
+  final bool showFidelity;
+  final bool fidelity;
+  final ValueChanged<bool>? onFidelityToggle;
 
   @override
   State<ReaderSettingsSheet> createState() => _ReaderSettingsSheetState();
@@ -49,6 +55,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
   late ReaderTheme _theme = widget.theme;
   late int _autoSpeed = widget.autoSpeed;
   late bool _autoRunning = widget.autoRunning;
+  late bool _fidelity = widget.fidelity;
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +141,20 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                 ),
               ],
             ),
+            if (widget.showFidelity) ...[
+              const SizedBox(height: 8),
+              SwitchListTile(
+                key: const Key('epub-fidelity-switch'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('原版排版'),
+                subtitle: const Text('按 EPUB 的 XHTML/CSS 显示；自动阅读与段落摘录将暂停'),
+                value: _fidelity,
+                onChanged: (value) {
+                  setState(() => _fidelity = value);
+                  widget.onFidelityToggle?.call(value);
+                },
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [

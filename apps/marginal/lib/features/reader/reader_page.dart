@@ -19,6 +19,7 @@ import '../../core/types.dart';
 import 'chrome_icon_button.dart';
 import 'reader_chapter_sheet.dart';
 import 'reader_chunks.dart';
+import 'reader_epub_fidelity.dart';
 import 'reader_favorites_sheet.dart';
 import 'reader_paragraph_sheet.dart';
 import 'reader_poster_sheet.dart';
@@ -99,6 +100,11 @@ class _ReaderPageState extends State<ReaderPage>
   Map<int, List<Uint8List>> _images = {};
   ChapterWindow? _textWindow;
   bool _loadingWindow = false;
+  bool _fidelityAvailable = false;
+  bool _fidelityMode = false;
+  String? _fidelitySrcdoc;
+  int _fidelityGeneration = 0;
+  int _openGeneration = 0;
   static const int _chunkBudget = 4000;
   int _index = 0;
   bool _loading = true;
@@ -132,6 +138,9 @@ class _ReaderPageState extends State<ReaderPage>
   late final ReaderProjectionService _projectionService =
       ReaderProjectionService(widget.services.repository);
   late final ChapterWindowSource _windowSource = ChapterWindowSource(
+    widget.services.repository,
+  );
+  late final EpubFidelitySource _fidelitySource = EpubFidelitySource(
     widget.services.repository,
   );
   late final ShareService _share =
@@ -251,7 +260,9 @@ class _ReaderPageState extends State<ReaderPage>
     bool restorePosition = false,
     double? targetRatio,
   }) async {
-    // 切章前把上一章的滚动位置落库。
+    final generation = ++_openGeneration;
+    ++_fidelityGeneration;
+    // 切章前把上一章的滚动位置落库.
     _positionSaveTimer?.cancel();
     _positionSaveTimer = null;
     await _savePositionNow();
@@ -267,10 +278,13 @@ class _ReaderPageState extends State<ReaderPage>
     final results = await Future.wait([
       _projectionService.projection(widget.work.id, chapters[index]),
       _windowSource.load(chapters[index].id, ratio: target),
+      if (epubFidelitySupported)
+        _fidelitySource.isAvailable(widget.work.id, chapters[index].id),
     ]);
     final projection = results[0] as ChapterProjection;
     final window = results[1] as ChapterWindow;
-    if (!mounted) return;
+    final fidelityAvailable = epubFidelitySupported && results[2] == true;
+    if (!mounted || generation != _openGeneration) return;
     setState(() {
       _chapters = chapters;
       _index = index;
@@ -290,6 +304,9 @@ class _ReaderPageState extends State<ReaderPage>
           ),
       ];
       _images = Map.of(projection.images);
+      _fidelityAvailable = fidelityAvailable;
+      if (!fidelityAvailable) _fidelityMode = false;
+      _fidelitySrcdoc = null;
       _paraKeys.clear();
       _loading = false;
     });
@@ -298,6 +315,19 @@ class _ReaderPageState extends State<ReaderPage>
       await _persistSettings();
     } catch (_) {
       // A storage connection failure must never block the reader surface.
+    }
+    if (_fidelityMode && fidelityAvailable) {
+      // 原版排版按需加载：不在切章路径常驻整章 XHTML 字节。
+      final chapter = chapters[index];
+      final doc = await _fidelitySource.load(widget.work.id, chapter);
+      if (!mounted ||
+          generation != _openGeneration ||
+          _currentChapter?.id != chapter.id) {
+        return;
+      }
+      setState(() {
+        _fidelitySrcdoc = doc == null ? null : epubFidelitySrcdoc(doc);
+      });
     }
     final positioned = Completer<void>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -364,6 +394,41 @@ class _ReaderPageState extends State<ReaderPage>
     _settings['reader.theme'] = theme.name;
     setState(() {});
     await _persistSettings();
+  }
+
+  Future<void> _setFidelityMode(bool enabled) async {
+    if (enabled == _fidelityMode) return;
+    final generation = ++_fidelityGeneration;
+    if (enabled) {
+      if (!_fidelityAvailable) return;
+      _stopAuto();
+      final chapter = _currentChapter;
+      if (chapter == null) return;
+      setState(() {
+        _fidelityMode = true;
+        _fidelitySrcdoc = null;
+      });
+      await _savePositionNow();
+      final doc = await _fidelitySource.load(widget.work.id, chapter);
+      if (!mounted ||
+          generation != _fidelityGeneration ||
+          _currentChapter?.id != chapter.id ||
+          !_fidelityMode) {
+        return;
+      }
+      if (doc == null) {
+        setState(() => _fidelityMode = false);
+        _snack('这一章没有可用的 EPUB 原版排版');
+        return;
+      }
+      setState(() => _fidelitySrcdoc = epubFidelitySrcdoc(doc));
+      return;
+    }
+    setState(() {
+      _fidelityMode = false;
+      _fidelitySrcdoc = null;
+    });
+    await _open(_chapters, _index, restorePosition: true);
   }
 
   Future<void> _setAutoSpeed(int value) async {
@@ -790,7 +855,7 @@ class _ReaderPageState extends State<ReaderPage>
   void _toggleAuto() => _autoRunning ? _stopAuto() : _startAuto();
 
   void _startAuto() {
-    if (_chapters.isEmpty) return;
+    if (_chapters.isEmpty || _fidelityMode) return;
     setState(() => _autoRunning = true);
     // 弹层打开期间保持暂停，关闭后由 _resumeAutoAfterSheet 启动。
     if (_sheetsOpen > 0) {
@@ -1048,9 +1113,25 @@ class _ReaderPageState extends State<ReaderPage>
                 ? const Center(child: Text('该书稿还没有章节。'))
                 : ColoredBox(
                     color: palette.background,
-                    child: _buildContent(palette),
+                    child: _fidelityMode && _fidelitySrcdoc != null
+                        ? ReaderEpubFidelityView(
+                            key: ValueKey(_currentChapter!.id),
+                            srcdoc: _fidelitySrcdoc!,
+                          )
+                        : _buildContent(palette),
                   ),
           ),
+          if (_fidelityMode && _fidelitySrcdoc != null)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 64,
+              right: 16,
+              child: FilledButton.tonalIcon(
+                key: const Key('reader-exit-fidelity'),
+                onPressed: () => unawaited(_setFidelityMode(false)),
+                icon: const Icon(Icons.text_snippet_outlined),
+                label: const Text('语义版'),
+              ),
+            ),
           if (!_loading && _chapters.isNotEmpty)
             _buildTopChrome(context, palette),
           if (!_loading && _chapters.isNotEmpty)
@@ -1218,13 +1299,16 @@ class _ReaderPageState extends State<ReaderPage>
         onTheme: (t) => _setTheme(t),
         onAutoSpeed: (v) => _setAutoSpeed(v),
         onAutoToggle: (v) => v ? _startAuto() : _stopAuto(),
+        showFidelity: _fidelityAvailable,
+        fidelity: _fidelityMode,
+        onFidelityToggle: (v) => unawaited(_setFidelityMode(v)),
       ),
     );
   }
 
   Widget _buildBottomChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
-    final canScrub = _chapterWeights.isNotEmpty;
+    final canScrub = _chapterWeights.isNotEmpty && !_fidelityMode;
     final borderColor = Theme.of(context).brightness == Brightness.dark
         ? Colors.white10
         : MarginalColors.line;

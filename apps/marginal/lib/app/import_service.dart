@@ -52,12 +52,34 @@ class _EpubImage {
 }
 
 String _mimeFor(String path) => switch (path.toLowerCase().split('.').last) {
+  'xhtml' || 'html' || 'htm' => 'application/xhtml+xml',
+  'css' => 'text/css',
+  'png' => 'image/png',
   'jpg' || 'jpeg' => 'image/jpeg',
   'gif' => 'image/gif',
   'webp' => 'image/webp',
   'svg' => 'image/svg+xml',
-  _ => 'image/png',
+  'ttf' => 'font/ttf',
+  'otf' => 'font/otf',
+  'woff' => 'font/woff',
+  'woff2' => 'font/woff2',
+  'mp3' => 'audio/mpeg',
+  'mp4' => 'video/mp4',
+  _ => 'application/octet-stream',
 };
+
+bool _isEpubRenderResource(String path) => RegExp(
+  r'\.(xhtml?|html?|css|png|jpe?g|gif|webp|svg|ttf|otf|woff2?)$',
+  caseSensitive: false,
+).hasMatch(path);
+
+String _epubResourceKind(String path) =>
+    switch (path.toLowerCase().split('.').last) {
+      'xhtml' || 'html' || 'htm' => 'epub-xhtml',
+      'css' => 'epub-css',
+      'ttf' || 'otf' || 'woff' || 'woff2' => 'epub-font',
+      _ => 'image',
+    };
 
 class ImportService {
   ImportService(this.repository);
@@ -131,10 +153,12 @@ class ImportService {
     onProgress?.call(ImportStages.readFile);
     final archive = ZipDecoder().decodeBytes(bytes);
     final files = <String, String>{};
+    final rawFiles = <String, List<int>>{};
     final binaryFiles = <String, List<int>>{};
     for (final file in archive.files) {
       if (!file.isFile) continue;
       final content = file.content as List<int>;
+      rawFiles[file.name] = content;
       if (RegExp(
         r'\.(png|jpe?g|gif|webp|svg)$',
         caseSensitive: false,
@@ -171,32 +195,39 @@ class ImportService {
     onProgress?.call(ImportStages.splitting);
     final chapters = <MapEntry<String, String>>[];
     final chapterImages = <int, List<_EpubImage>>{};
+    final chapterSources = <int, ({String path, List<int> bytes})>{};
     for (final id in spine) {
       final path = manifest[id];
       final html = path == null ? null : files[path];
       if (html == null) continue;
       final title = _htmlTitle(html) ?? '第 ${chapters.length + 1} 章';
       final text = _htmlText(html);
-      if (text.trim().isNotEmpty) {
-        final chapterIndex = chapters.length;
-        chapters.add(MapEntry(title, text));
-        final chapterBase = path!.contains('/')
-            ? path.substring(0, path.lastIndexOf('/') + 1)
-            : '';
-        final images = <_EpubImage>[];
-        for (final match in RegExp(
-          r'''<img\b[^>]*?src=["']([^"']+)["']''',
-          caseSensitive: false,
-        ).allMatches(html)) {
-          final resourcePath = _resolvePath(
-            chapterBase,
-            Uri.decodeComponent(match.group(1)!.split('#').first),
-          );
-          final image = binaryFiles[resourcePath];
-          if (image != null) images.add(_EpubImage(resourcePath, image));
-        }
-        if (images.isNotEmpty) chapterImages[chapterIndex] = images;
+      // Spine 中的文档即阅读顺序的一部分；固定版式页可以完全没有文本或 <img>，
+      // 仍须保留原始源，非 Web 目标用明确提示降级。
+      final chapterIndex = chapters.length;
+      chapters.add(
+        MapEntry(title, text.trim().isEmpty ? '此章节使用原版排版，请在 Web 版查看。' : text),
+      );
+      chapterSources[chapterIndex] = (
+        path: path!,
+        bytes: rawFiles[path] ?? utf8.encode(html),
+      );
+      final chapterBase = path.contains('/')
+          ? path.substring(0, path.lastIndexOf('/') + 1)
+          : '';
+      final images = <_EpubImage>[];
+      for (final match in RegExp(
+        r'''<img\b[^>]*?src=["']([^"']+)["']''',
+        caseSensitive: false,
+      ).allMatches(html)) {
+        final resourcePath = _resolvePath(
+          chapterBase,
+          Uri.decodeComponent(match.group(1)!.split('#').first),
+        );
+        final image = binaryFiles[resourcePath];
+        if (image != null) images.add(_EpubImage(resourcePath, image));
       }
+      if (images.isNotEmpty) chapterImages[chapterIndex] = images;
     }
     if (chapters.isEmpty) throw const FormatException('EPUB 没有可读正文');
     onProgress?.call(ImportStages.writing);
@@ -237,39 +268,56 @@ class ImportService {
     }
 
     try {
+      final renderBlobs = <String, BlobRec>{};
+      for (final entry in rawFiles.entries) {
+        if (!_isEpubRenderResource(entry.key)) continue;
+        final bytes = Uint8List.fromList(entry.value);
+        final kind = _epubResourceKind(entry.key);
+        final blob = BlobRec(
+          id: newId('epub-resource'),
+          workId: work.id,
+          storageKey: '${work.id}/${entry.key}',
+          kind: kind,
+          mime: _mimeFor(entry.key),
+          sha256: sha256.convert(bytes).toString(),
+          byteSize: bytes.length,
+        );
+        await repository.putBlob(blob, bytes);
+        renderBlobs[entry.key] = blob;
+      }
       for (var i = 0; i < chapters.length; i++) {
         final text = chapters[i].value;
-        await repository.putChapter(
-          work.id,
-          Chapter(
-            id: newId('chapter'),
-            workId: work.id,
-            idx: i,
-            title: chapters[i].key,
-            wordCount: text.runes.length,
-            contentHash: sha256.convert(utf8.encode(text)).toString(),
-          ),
-          text,
+        final chapter = Chapter(
+          id: newId('chapter'),
+          workId: work.id,
+          idx: i,
+          title: chapters[i].key,
+          wordCount: text.runes.length,
+          contentHash: sha256.convert(utf8.encode(text)).toString(),
         );
-        for (final image in chapterImages[i] ?? const <_EpubImage>[]) {
-          final blobId = newId('epub-image');
-          final storageKey = '${work.id}/$blobId';
-          final blob = BlobRec(
-            id: blobId,
-            workId: work.id,
-            storageKey: storageKey,
-            kind: 'image',
-            mime: _mimeFor(image.path),
-            sha256: sha256.convert(image.bytes).toString(),
-            byteSize: image.bytes.length,
-          );
-          await repository.putBlob(blob, Uint8List.fromList(image.bytes));
+        await repository.putChapter(work.id, chapter, text);
+        final source = chapterSources[i];
+        final sourceBlob = source == null ? null : renderBlobs[source.path];
+        if (sourceBlob != null) {
           await repository.putAnchor(
             Anchor(
               id: newId('anchor'),
               workId: work.id,
-              chapterId: (await repository.listChapters(work.id)).last.id,
-              targetId: blobId,
+              chapterId: chapter.id,
+              targetId: sourceBlob.id,
+              targetType: 'epub-source',
+            ),
+          );
+        }
+        for (final image in chapterImages[i] ?? const <_EpubImage>[]) {
+          final blob = renderBlobs[image.path];
+          if (blob == null) continue;
+          await repository.putAnchor(
+            Anchor(
+              id: newId('anchor'),
+              workId: work.id,
+              chapterId: chapter.id,
+              targetId: blob.id,
               paraIndex: 0,
             ),
           );

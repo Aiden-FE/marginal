@@ -100,3 +100,17 @@ _Avoid_: 阅读失败、自动拆章
 **全书包 (Book Bundle)**:
 单本作品的自包含导出文件（文本、修订、实体卡、插图），用于双端手动同步。
 _Avoid_: 备份、存档、导出文件
+
+### 阅读呈现
+
+**语义正文 (Semantic Text)**:
+EPUB 导入时抽取出的纯文本正文；是跨平台默认阅读形态，承载窗口化 I/O、段落交互、收藏与自动阅读。
+_Avoid_: 纯文本模式、降级文本
+
+**原版排版 (Original Layout)**:
+按 EPUB 的原始 XHTML/CSS/字体/固定版式 viewport 渲染章节的模式；仅在浏览器目标可用，资源以内嵌 data URI 离线加载，EPUB 脚本被禁止。
+_Avoid_: 富文本模式、WebView 阅读
+
+**渲染资源 (Render Resources)**:
+EPUB 压缩包内按原始路径保存的 XHTML、CSS、图片、SVG、字体 Blob；章节通过 `epub-source` 锚点指向其原始 XHTML。
+_Avoid_: 附件、素材

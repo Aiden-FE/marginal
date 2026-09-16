@@ -23,7 +23,12 @@ class ReaderProjectionService {
 
   Future<ChapterProjection> projection(String workId, Chapter chapter) async {
     final activeAnchors = (await repository.listAnchors(workId))
-        .where((a) => a.chapterId == chapter.id && a.state == 'active')
+        .where(
+          (a) =>
+              a.chapterId == chapter.id &&
+              a.state == 'active' &&
+              a.targetType == 'illustration',
+        )
         .toList();
     if (activeAnchors.isEmpty) {
       return ChapterProjection(chapter: chapter);
