@@ -5,8 +5,8 @@
 - 设备：iPhone 17 Pro Simulator，iOS 26.5（23F77）
 - 浏览器：系统 Mobile Safari / WebKit
 - 生产入口：<https://marginal-app-sandy.vercel.app>
-- GitHub `master`：`a942397`（`fix: integrate EPUB exit into reader chrome`）
-- Vercel：`dpl_8CKToNrmfGcVjuwTetkXagV4YJxY`，`READY / Production`，deployment metadata 的 Git SHA 与 `a942397` 一致
+- 运行时代码提交：`a942397`（`fix: integrate EPUB exit into reader chrome`）；后续仅追加验收证据文档，不改变运行时产物
+- 验收时 Vercel 代码部署：`dpl_8CKToNrmfGcVjuwTetkXagV4YJxY`，`READY / Production`，deployment metadata 的 Git SHA 与 `a942397` 一致
 - `main.dart.js` SHA-256：本地 `web-dist` 与生产均为 `3cc0bf45159a82c372a6f26284fc1adbce8b94a8e1d2867e8da0dabe6af6d094`
 - 自动门禁：`flutter analyze` 无问题；`flutter test` 155/155 通过；`flutter build web --release --no-wasm-dry-run` 成功
 
