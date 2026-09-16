@@ -355,4 +355,33 @@ void main() {
     expect(illustrated, ['第二段。']);
     await settleQuietly(tester);
   });
+
+  testWidgets('窗口末尾不是真实章末时不会提前切换下一章', (tester) async {
+    final veryLong = List.generate(9000, (i) => '段落$i：窗口正文。').join('\n');
+    final services = await seed(chapterTexts: [veryLong, '下一章。']);
+    await pumpReader(tester, services);
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byKey(const Key('reader-scroll-view')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('第 1/2 章'), findsOneWidget);
+  });
+
+  testWidgets('超长单段收藏保存完整原段而非当前窗口片段', (tester) async {
+    final hugeParagraph = '长' * 60000;
+    final services = await seed(chapterTexts: [hugeParagraph]);
+    await pumpReader(tester, services);
+    await tester.longPressAt(const Offset(400, 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('收藏段落'));
+    await tester.pumpAndSettle();
+    final saved = await services.repository.getWork('w');
+    final favorites = saved!.settings['favorites.w'] as List;
+    expect((favorites.single as Map)['text'], hugeParagraph);
+  });
 }

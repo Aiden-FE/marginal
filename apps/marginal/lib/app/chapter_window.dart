@@ -7,10 +7,13 @@ class ChapterWindow {
     required this.end,
     required this.totalLength,
     required this.paragraphBase,
+    required this.startsMidParagraph,
+    required this.endsMidParagraph,
   });
 
   final String text;
   final int start, end, totalLength, paragraphBase;
+  final bool startsMidParagraph, endsMidParagraph;
   double get startRatio => totalLength == 0 ? 0 : start / totalLength;
   double get endRatio => totalLength == 0 ? 1 : end / totalLength;
 }
@@ -38,6 +41,8 @@ class ChapterWindowSource {
         end: 0,
         totalLength: 0,
         paragraphBase: 0,
+        startsMidParagraph: false,
+        endsMidParagraph: false,
       );
     }
     final center = offset ?? (ratio.clamp(0.0, 1.0) * total).round();
@@ -56,6 +61,8 @@ class ChapterWindowSource {
       end: end,
       totalLength: total,
       paragraphBase: await paragraphCountBefore(chapterId, start),
+      startsMidParagraph: await _isMidParagraph(chapterId, start),
+      endsMidParagraph: await _isMidParagraph(chapterId, end),
     );
   }
 
@@ -77,7 +84,6 @@ class ChapterWindowSource {
       count += lines.where((line) => line.trim().isNotEmpty).length;
       offset += chunk.length;
     }
-    if (pending.trim().isNotEmpty && offset >= end) count++;
     return count;
   }
 
@@ -113,6 +119,38 @@ class ChapterWindowSource {
       offset += chunk.length;
     }
     return total;
+  }
+
+  Future<String> paragraphText(String chapterId, int paragraphIndex) async {
+    final start = await paragraphOffset(chapterId, paragraphIndex);
+    final total = await repository.getChapterTextLength(chapterId);
+    if (start >= total) return '';
+    final buffer = StringBuffer();
+    var offset = start;
+    while (offset < total) {
+      final chunk = await repository.readChapterRange(
+        chapterId,
+        offset,
+        (total - offset).clamp(0, scanSize),
+      );
+      if (chunk.isEmpty) break;
+      final newline = RegExp(r'\r\n?|\n').firstMatch(chunk);
+      if (newline != null) {
+        buffer.write(chunk.substring(0, newline.start));
+        break;
+      }
+      buffer.write(chunk);
+      offset += chunk.length;
+    }
+    return buffer.toString().trim();
+  }
+
+  Future<bool> _isMidParagraph(String chapterId, int offset) async {
+    final total = await repository.getChapterTextLength(chapterId);
+    if (offset <= 0 || offset >= total) return false;
+    final around = await repository.readChapterRange(chapterId, offset - 1, 2);
+    if (around.length < 2) return false;
+    return around[0] != '\n' && around[1] != '\n';
   }
 
   Future<int> _alignStart(String chapterId, int start) async {

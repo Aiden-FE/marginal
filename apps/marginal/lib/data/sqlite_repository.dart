@@ -16,6 +16,24 @@ class SqliteRepository implements Repository {
   int _transactionDepth = 0;
 
   SqliteRepository(this.db) {
+    db.createFunction(
+      functionName: 'dart_utf16_length',
+      argumentCount: const AllowedArgumentCount(1),
+      function: (args) => (args[0] as String? ?? '').length,
+    );
+    db.createFunction(
+      functionName: 'dart_utf16_substr',
+      argumentCount: const AllowedArgumentCount(3),
+      function: (args) {
+        final text = args[0] as String? ?? '';
+        final start = (args[1] as num).toInt().clamp(0, text.length);
+        final length = (args[2] as num).toInt().clamp(0, text.length);
+        return text.substring(
+          start,
+          (start + length).clamp(start, text.length),
+        );
+      },
+    );
     db.execute('PRAGMA journal_mode = WAL;');
     _migrate();
   }
@@ -168,7 +186,7 @@ class SqliteRepository implements Repository {
   @override
   Future<int> getChapterTextLength(String chapterId) async {
     final rows = db.select(
-      'SELECT length(text) AS size FROM chapters WHERE id=?',
+      'SELECT dart_utf16_length(text) AS size FROM chapters WHERE id=?',
       [chapterId],
     );
     return rows.isEmpty ? 0 : (rows.first['size'] as num).toInt();
@@ -183,8 +201,8 @@ class SqliteRepository implements Repository {
     final safeStart = start.clamp(0, 1 << 30);
     final safeLength = length.clamp(0, 1 << 30);
     final rows = db.select(
-      'SELECT substr(text, ?, ?) AS chunk FROM chapters WHERE id=?',
-      [safeStart + 1, safeLength, chapterId],
+      'SELECT dart_utf16_substr(text, ?, ?) AS chunk FROM chapters WHERE id=?',
+      [safeStart, safeLength, chapterId],
     );
     return rows.isEmpty ? '' : rows.first['chunk'] as String? ?? '';
   }

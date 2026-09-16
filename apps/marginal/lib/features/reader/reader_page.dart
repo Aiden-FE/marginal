@@ -457,6 +457,11 @@ class _ReaderPageState extends State<ReaderPage>
     }
     if (targetOffset == null) return;
     _loadingWindow = true;
+    final localRatio = position.maxScrollExtent <= 0
+        ? 0.0
+        : (position.pixels / position.maxScrollExtent).clamp(0.0, 1.0);
+    final globalOffset =
+        window.start + ((window.end - window.start) * localRatio).round();
     final next = await _windowSource.load(chapter.id, offset: targetOffset);
     if (!mounted || _currentChapter?.id != chapter.id) {
       _loadingWindow = false;
@@ -482,12 +487,17 @@ class _ReaderPageState extends State<ReaderPage>
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        final local = next.end == next.start
+            ? 0.0
+            : ((globalOffset - next.start) / (next.end - next.start)).clamp(
+                0.0,
+                1.0,
+              );
         _scrollController.jumpTo(
-          nearEnd
-              ? position.viewportDimension
-              : (_scrollController.position.maxScrollExtent -
-                        position.viewportDimension)
-                    .clamp(0.0, _scrollController.position.maxScrollExtent),
+          (local * _scrollController.position.maxScrollExtent).clamp(
+            0.0,
+            _scrollController.position.maxScrollExtent,
+          ),
         );
       }
       _loadingWindow = false;
@@ -573,7 +583,11 @@ class _ReaderPageState extends State<ReaderPage>
     if (chapter == null || window == null) return;
     final localIndex = paraIndex - window.paragraphBase;
     if (localIndex < 0 || localIndex >= _paragraphs.length) return;
-    final paragraph = _paragraphs[localIndex];
+    final localParagraph = _paragraphs[localIndex];
+    final paragraph = window.startsMidParagraph || window.endsMidParagraph
+        ? await _windowSource.paragraphText(chapter.id, paraIndex)
+        : localParagraph;
+    if (!mounted) return;
     await _showSheet(
       (context) => ReaderParagraphSheet(
         paragraph: paragraph,
@@ -815,7 +829,10 @@ class _ReaderPageState extends State<ReaderPage>
     final controller = _scrollController;
     if (!controller.hasClients) return;
     final position = controller.position;
-    if (controller.offset >= position.maxScrollExtent - 0.5) {
+    final atTrueChapterEnd =
+        _textWindow?.end == _textWindow?.totalLength &&
+        controller.offset >= position.maxScrollExtent - 0.5;
+    if (atTrueChapterEnd) {
       // 章末：停留 1.5s 后切下一章继续。
       _stopTicker();
       _chapterEndTimer?.cancel();
@@ -877,7 +894,10 @@ class _ReaderPageState extends State<ReaderPage>
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
     if (direction > 0) {
-      if (position.pixels >= position.maxScrollExtent - 0.5) {
+      final atTrueChapterEnd =
+          _textWindow?.end == _textWindow?.totalLength &&
+          position.pixels >= position.maxScrollExtent - 0.5;
+      if (atTrueChapterEnd) {
         if (_index + 1 < _chapters.length) {
           unawaited(_open(_chapters, _index + 1));
         }

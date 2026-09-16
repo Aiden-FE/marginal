@@ -50,6 +50,36 @@ void main() {
     expect(repo.rangeUnits, lessThan(text.length ~/ 2));
   });
 
+  test(
+    'adjacent windows overlap without losing or inventing characters',
+    () async {
+      final repo = RangeCountingRepository();
+      final text = List.generate(16000, (i) => '段$i。').join('\n');
+      await repo.putChapter(
+        'w',
+        Chapter(
+          id: 'c',
+          workId: 'w',
+          idx: 0,
+          title: '长章',
+          wordCount: text.length,
+        ),
+        text,
+      );
+      final source = ChapterWindowSource(repo, windowSize: 12000);
+      final first = await source.load('c');
+      final second = await source.load('c', offset: first.end + 1);
+      expect(first.end, greaterThan(second.start), reason: '窗口必须有重叠以维持滚动定位');
+      final overlap = first.end - second.start;
+      expect(
+        first.text.substring(first.text.length - overlap),
+        second.text.substring(0, overlap),
+      );
+      final stitched = first.text + second.text.substring(overlap);
+      expect(stitched, text.substring(first.start, second.end));
+    },
+  );
+
   test('middle restore reads a window around requested ratio', () async {
     final repo = RangeCountingRepository();
     final text = List.generate(12000, (i) => '第$i段正文。').join('\n');

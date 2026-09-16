@@ -28,6 +28,14 @@ void main() {
     await repo.putChapter('w1', chapter, 'hello');
     expect((await repo.listChapters('w1')).single.id, 'c1');
     expect(await repo.getChapterText('c1'), 'hello');
+    await repo.putChapter(
+      'w1',
+      const Chapter(id: 'emoji', workId: 'w1', idx: 1, title: 'Emoji'),
+      '甲📖乙',
+    );
+    expect(await repo.getChapterTextLength('emoji'), 4);
+    expect(await repo.readChapterRange('emoji', 1, 2), '📖');
+    expect(await repo.readChapterRange('emoji', 3, 1), '乙');
     await repo.replaceChapters('w1', [
       MapEntry(Chapter(id: 'c2', workId: 'w1', idx: 0, title: 'Two'), 'world'),
     ]);
