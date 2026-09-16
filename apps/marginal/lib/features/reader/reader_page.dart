@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../app/chapter_window.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/reading_prefs.dart' as prefs;
 import '../../app/reader_projection.dart';
@@ -96,6 +97,8 @@ class _ReaderPageState extends State<ReaderPage>
   List<String> _paragraphs = const [];
   List<ReaderChunk> _chunks = const [];
   Map<int, List<Uint8List>> _images = {};
+  ChapterWindow? _textWindow;
+  bool _loadingWindow = false;
   static const int _chunkBudget = 4000;
   int _index = 0;
   bool _loading = true;
@@ -128,6 +131,9 @@ class _ReaderPageState extends State<ReaderPage>
 
   late final ReaderProjectionService _projectionService =
       ReaderProjectionService(widget.services.repository);
+  late final ChapterWindowSource _windowSource = ChapterWindowSource(
+    widget.services.repository,
+  );
   late final ShareService _share =
       widget.shareService ?? const SharePlusService();
 
@@ -250,16 +256,39 @@ class _ReaderPageState extends State<ReaderPage>
     _positionSaveTimer = null;
     await _savePositionNow();
 
-    final projection = await _projectionService.projection(
-      widget.work.id,
-      chapters[index],
-    );
+    final position = prefs.loadReadingPosition(_settings);
+    final target =
+        targetRatio ??
+        (restorePosition &&
+                position != null &&
+                position.chapterId == chapters[index].id
+            ? position.ratio
+            : 0.0);
+    final results = await Future.wait([
+      _projectionService.projection(widget.work.id, chapters[index]),
+      _windowSource.load(chapters[index].id, ratio: target),
+    ]);
+    final projection = results[0] as ChapterProjection;
+    final window = results[1] as ChapterWindow;
     if (!mounted) return;
     setState(() {
       _chapters = chapters;
       _index = index;
-      _paragraphs = _splitParagraphs(projection.text);
-      _chunks = buildReaderChunks(_paragraphs, maxCodeUnits: _chunkBudget);
+      _textWindow = window;
+      _paragraphs = _splitParagraphs(window.text);
+      _chunks = [
+        for (final chunk in buildReaderChunks(
+          _paragraphs,
+          maxCodeUnits: _chunkBudget,
+        ))
+          ReaderChunk(
+            paraIndex: chunk.paraIndex + window.paragraphBase,
+            text: chunk.text,
+            start: chunk.start,
+            end: chunk.end,
+            isLastFragment: chunk.isLastFragment,
+          ),
+      ];
       _images = Map.of(projection.images);
       _paraKeys.clear();
       _loading = false;
@@ -276,18 +305,15 @@ class _ReaderPageState extends State<ReaderPage>
         positioned.complete();
         return;
       }
-      final position = prefs.loadReadingPosition(_settings);
       final p = _scrollController.position;
-      final ratio =
-          targetRatio ??
-          (restorePosition &&
-                  position != null &&
-                  position.chapterId == chapters[index].id
-              ? position.ratio
-              : 0.0);
+      final localRatio = window.end == window.start
+          ? 0.0
+          : ((target * window.totalLength - window.start) /
+                    (window.end - window.start))
+                .clamp(0.0, 1.0);
       _scrollController.jumpTo(
         prefs.scrollTopForRatio(
-          ratio,
+          localRatio,
           p.maxScrollExtent + p.viewportDimension,
           p.viewportDimension,
         ),
@@ -377,11 +403,16 @@ class _ReaderPageState extends State<ReaderPage>
   void _updateProgress(double scrollTop) {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    final chapterRatio = prefs.scrollRatio(
+    final localRatio = prefs.scrollRatio(
       scrollTop,
       position.maxScrollExtent + position.viewportDimension,
       position.viewportDimension,
     );
+    final window = _textWindow;
+    final chapterRatio = window == null || window.totalLength == 0
+        ? localRatio
+        : (window.start + (window.end - window.start) * localRatio) /
+              window.totalLength;
     final work = prefs.workProgressRatio(
       chapterWeights: _chapterWeights,
       chapterIndex: _index,
@@ -400,6 +431,67 @@ class _ReaderPageState extends State<ReaderPage>
       _updateProgress(_scrollController.offset);
     }
     _schedulePositionSave();
+    _maybeShiftWindow();
+  }
+
+  Future<void> _maybeShiftWindow() async {
+    final window = _textWindow;
+    final chapter = _currentChapter;
+    if (_loadingWindow ||
+        window == null ||
+        chapter == null ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+    final nearEnd =
+        position.pixels >=
+        position.maxScrollExtent - position.viewportDimension * 1.5;
+    final nearStart = position.pixels <= position.viewportDimension * .5;
+    int? targetOffset;
+    if (nearEnd && window.end < window.totalLength) {
+      targetOffset = window.end + 1;
+    }
+    if (nearStart && window.start > 0) {
+      targetOffset = (window.start - 1).clamp(0, window.totalLength);
+    }
+    if (targetOffset == null) return;
+    _loadingWindow = true;
+    final next = await _windowSource.load(chapter.id, offset: targetOffset);
+    if (!mounted || _currentChapter?.id != chapter.id) {
+      _loadingWindow = false;
+      return;
+    }
+    setState(() {
+      _textWindow = next;
+      _paragraphs = _splitParagraphs(next.text);
+      _chunks = [
+        for (final chunk in buildReaderChunks(
+          _paragraphs,
+          maxCodeUnits: _chunkBudget,
+        ))
+          ReaderChunk(
+            paraIndex: chunk.paraIndex + next.paragraphBase,
+            text: chunk.text,
+            start: chunk.start,
+            end: chunk.end,
+            isLastFragment: chunk.isLastFragment,
+          ),
+      ];
+      _paraKeys.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(
+          nearEnd
+              ? position.viewportDimension
+              : (_scrollController.position.maxScrollExtent -
+                        position.viewportDimension)
+                    .clamp(0.0, _scrollController.position.maxScrollExtent),
+        );
+      }
+      _loadingWindow = false;
+    });
   }
 
   // ---- 阅读位置 ----
@@ -422,11 +514,18 @@ class _ReaderPageState extends State<ReaderPage>
     prefs.saveReadingPosition(
       _settings,
       chapter.id,
-      prefs.scrollRatio(
-        _scrollController.offset,
-        p.maxScrollExtent + p.viewportDimension,
-        p.viewportDimension,
-      ),
+      (() {
+        final localRatio = prefs.scrollRatio(
+          _scrollController.offset,
+          p.maxScrollExtent + p.viewportDimension,
+          p.viewportDimension,
+        );
+        final window = _textWindow;
+        return window == null || window.totalLength == 0
+            ? localRatio
+            : (window.start + (window.end - window.start) * localRatio) /
+                  window.totalLength;
+      })(),
     );
     await _persistSettings();
   }
@@ -470,13 +569,16 @@ class _ReaderPageState extends State<ReaderPage>
 
   Future<void> _showParagraphSheet(int paraIndex) async {
     final chapter = _currentChapter;
-    if (chapter == null) return;
-    final paragraph = _paragraphs[paraIndex];
+    final window = _textWindow;
+    if (chapter == null || window == null) return;
+    final localIndex = paraIndex - window.paragraphBase;
+    if (localIndex < 0 || localIndex >= _paragraphs.length) return;
+    final paragraph = _paragraphs[localIndex];
     await _showSheet(
       (context) => ReaderParagraphSheet(
         paragraph: paragraph,
         isFavorite: _isFavorite(paraIndex),
-        onToggleFavorite: () => _toggleParagraphFavorite(paraIndex),
+        onToggleFavorite: () => _toggleParagraphFavorite(paraIndex, paragraph),
         onCopy: () => _copyParagraph(paragraph),
         onPoster: () => _showPosterSheet(paragraph),
         onIllustrate:
@@ -488,7 +590,7 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
-  Future<void> _toggleParagraphFavorite(int paraIndex) async {
+  Future<void> _toggleParagraphFavorite(int paraIndex, String paragraph) async {
     final chapter = _currentChapter;
     if (chapter == null) return;
     final result = prefs.toggleParagraphFavorite(
@@ -498,7 +600,7 @@ class _ReaderPageState extends State<ReaderPage>
         chapterId: chapter.id,
         chapterTitle: chapter.title,
         paraIndex: paraIndex,
-        text: _paragraphs[paraIndex],
+        text: paragraph,
         savedAt: DateTime.now().millisecondsSinceEpoch,
       ),
     );
@@ -563,15 +665,39 @@ class _ReaderPageState extends State<ReaderPage>
     final index = _chapters.indexWhere((c) => c.id == favorite.chapterId);
     if (index < 0) return;
     if (index != _index) await _open(_chapters, index);
-    final target = _chunks.indexWhere(
+    var target = _chunks.indexWhere(
       (chunk) => chunk.paraIndex == favorite.paraIndex,
     );
+    if (target < 0) {
+      final offset = await _windowSource.paragraphOffset(
+        favorite.chapterId,
+        favorite.paraIndex,
+      );
+      final next = await _windowSource.load(favorite.chapterId, offset: offset);
+      if (!mounted) return;
+      setState(() {
+        _textWindow = next;
+        _paragraphs = _splitParagraphs(next.text);
+        _chunks = [
+          for (final chunk in buildReaderChunks(
+            _paragraphs,
+            maxCodeUnits: _chunkBudget,
+          ))
+            ReaderChunk(
+              paraIndex: chunk.paraIndex + next.paragraphBase,
+              text: chunk.text,
+              start: chunk.start,
+              end: chunk.end,
+              isLastFragment: chunk.isLastFragment,
+            ),
+        ];
+        _paraKeys.clear();
+      });
+      target = _chunks.indexWhere(
+        (chunk) => chunk.paraIndex == favorite.paraIndex,
+      );
+    }
     if (target < 0 || !_scrollController.hasClients) return;
-    await _scrollController.animateTo(
-      _estimatedChunkOffset(target),
-      duration: _chromeDuration,
-      curve: Curves.easeOutCubic,
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = _paraKey(favorite.paraIndex).currentContext;
       if (context == null) return;
@@ -581,12 +707,6 @@ class _ReaderPageState extends State<ReaderPage>
         alignment: 0.08,
       );
     });
-  }
-
-  double _estimatedChunkOffset(int target) {
-    if (!_scrollController.hasClients || _chunks.isEmpty) return 0;
-    final extent = _scrollController.position.maxScrollExtent;
-    return (extent * target / _chunks.length).clamp(0.0, extent);
   }
 
   // ---- 章节抽屉 / 书签 ----

@@ -70,12 +70,11 @@ void main() {
       final result = await ReaderProjectionService(repo)
           .projection('w', chapter);
 
-      expect(result.text, '正文');
       expect(result.images.keys, contains(2));
       expect(result.images[2]!.single, orderedEquals([1]));
       expect(repo.blobLists, 1);
       expect(repo.blobReads, 1);
-      expect(repo.textReads, 1);
+      expect(repo.textReads, 0);
     },
   );
 

@@ -12,6 +12,8 @@ abstract class Repository {
   Future<void> deleteWork(String id);
   Future<List<Chapter>> listChapters(String workId);
   Future<String> getChapterText(String chapterId);
+  Future<int> getChapterTextLength(String chapterId) async =>
+      (await getChapterText(chapterId)).length;
 
   /// Reads a bounded UTF-16 range without requiring callers to materialize the full chapter.
   /// Drivers that cannot range-read may return a substring from their existing text store.

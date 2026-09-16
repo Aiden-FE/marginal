@@ -166,6 +166,15 @@ class SqliteRepository implements Repository {
   }
 
   @override
+  Future<int> getChapterTextLength(String chapterId) async {
+    final rows = db.select(
+      'SELECT length(text) AS size FROM chapters WHERE id=?',
+      [chapterId],
+    );
+    return rows.isEmpty ? 0 : (rows.first['size'] as num).toInt();
+  }
+
+  @override
   Future<String> readChapterRange(
     String chapterId,
     int start,

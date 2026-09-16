@@ -5,13 +5,8 @@ import '../core/types.dart';
 
 /// The reader-facing view of one chapter.
 class ChapterProjection {
-  const ChapterProjection({
-    required this.chapter,
-    required this.text,
-    this.images = const {},
-  });
+  const ChapterProjection({required this.chapter, this.images = const {}});
   final Chapter chapter;
-  final String text;
   final Map<int, List<Uint8List>> images;
 }
 
@@ -27,12 +22,11 @@ class ReaderProjectionService {
         ..sort((a, b) => a.idx.compareTo(b.idx));
 
   Future<ChapterProjection> projection(String workId, Chapter chapter) async {
-    final text = await repository.getChapterText(chapter.id);
     final activeAnchors = (await repository.listAnchors(workId))
         .where((a) => a.chapterId == chapter.id && a.state == 'active')
         .toList();
     if (activeAnchors.isEmpty) {
-      return ChapterProjection(chapter: chapter, text: text);
+      return ChapterProjection(chapter: chapter);
     }
     final images = <int, List<Uint8List>>{};
     // 一次拉取本稿全部 blob 记录与字节，再按锚点落位。
@@ -50,6 +44,6 @@ class ReaderProjectionService {
         images.putIfAbsent(anchor.paraIndex, () => []).add(bytes);
       }
     }
-    return ChapterProjection(chapter: chapter, text: text, images: images);
+    return ChapterProjection(chapter: chapter, images: images);
   }
 }

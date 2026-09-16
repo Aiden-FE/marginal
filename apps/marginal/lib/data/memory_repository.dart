@@ -91,12 +91,15 @@ class MemoryRepository implements Repository {
   Future<String> getChapterText(String chapterId) async =>
       _texts[chapterId] ?? '';
   @override
+  Future<int> getChapterTextLength(String chapterId) async =>
+      (_texts[chapterId] ?? '').length;
+  @override
   Future<String> readChapterRange(
     String chapterId,
     int start,
     int length,
   ) async {
-    final text = await getChapterText(chapterId);
+    final text = _texts[chapterId] ?? '';
     final safeStart = start.clamp(0, text.length);
     final safeEnd = (safeStart + length.clamp(0, text.length)).clamp(
       safeStart,

@@ -46,6 +46,9 @@ class FakeRepository implements Repository {
   Future<String> getChapterText(String chapterId) async =>
       _texts[chapterId] ?? '';
   @override
+  Future<int> getChapterTextLength(String chapterId) async =>
+      (_texts[chapterId] ?? '').length;
+  @override
   Future<String> readChapterRange(
     String chapterId,
     int start,
