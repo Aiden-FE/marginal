@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marginal/app/platform_services.dart';
 import 'package:marginal/app/reading_shell.dart';
+import 'package:marginal/app/vector_icons.dart';
 
 void main() {
   testWidgets('生产壳提供书库、AI、我的三个一级 Tab', (tester) async {
@@ -27,27 +28,10 @@ void main() {
     expect(find.text('书库'), findsOneWidget);
     expect(find.text('AI'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
-    const navIcons = [
-      Icons.menu_book_rounded,
-      Icons.auto_awesome,
-      Icons.person_rounded,
-    ];
-    const navOutlineIcons = [
-      Icons.menu_book_outlined,
-      Icons.auto_awesome_outlined,
-      Icons.person_outline_rounded,
-    ];
     expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Icon &&
-            [
-              ...navIcons,
-              ...navOutlineIcons,
-            ].any((data) => identical(widget.icon, data)),
-      ),
+      find.byType(VectorIcon),
       findsNWidgets(3),
-      reason: '每个底部 Tab 必须渲染真实 Icon，而不是只剩文字色块',
+      reason: '每个底部 Tab 必须渲染不依赖字体的矢量图标',
     );
 
     await tester.tap(find.text('AI'));

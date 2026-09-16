@@ -1004,7 +1004,7 @@ class _LibraryPageState extends State<LibraryPage> {
               ],
             )
           : null,
-      floatingActionButton: widget.showAppBar
+      floatingActionButton: (widget.showAppBar || widget.showWorkspaceFeatures)
           ? FloatingActionButton(
               onPressed: _import,
               tooltip: '导入 TXT / .mabk',

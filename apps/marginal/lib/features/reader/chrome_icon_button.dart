@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/vector_icons.dart';
+
 class ChromeIconButton extends StatelessWidget {
   const ChromeIconButton({
     super.key,
@@ -9,7 +11,7 @@ class ChromeIconButton extends StatelessWidget {
     this.tooltip,
   });
 
-  final IconData icon;
+  final VectorIconKind icon;
   final Color color;
   final VoidCallback onPressed;
   final String? tooltip;
@@ -29,7 +31,7 @@ class ChromeIconButton extends StatelessWidget {
         ),
         child: IconButton(
           tooltip: tooltip,
-          icon: Icon(icon, color: color, size: 21),
+          icon: VectorIcon(icon, color: color, size: 21),
           onPressed: onPressed,
           constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           padding: EdgeInsets.zero,

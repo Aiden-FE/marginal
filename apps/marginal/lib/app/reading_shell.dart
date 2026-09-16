@@ -5,6 +5,7 @@ import '../features/library/library_page.dart';
 import '../features/settings/settings_page.dart';
 import 'marginal_theme.dart';
 import 'platform_services.dart';
+import 'vector_icons.dart';
 
 class ReadingShell extends StatefulWidget {
   const ReadingShell({super.key, required this.services});
@@ -63,18 +64,18 @@ class _ReadingShellState extends State<ReadingShell> {
               setState(() => _selectedIndex = index),
           destinations: const [
             NavigationDestination(
-              icon: Icon(Icons.menu_book_outlined),
-              selectedIcon: Icon(Icons.menu_book_rounded),
+              icon: VectorIcon(VectorIconKind.library),
+              selectedIcon: VectorIcon(VectorIconKind.library),
               label: '书库',
             ),
             NavigationDestination(
-              icon: Icon(Icons.auto_awesome_outlined),
-              selectedIcon: Icon(Icons.auto_awesome),
+              icon: VectorIcon(VectorIconKind.ai),
+              selectedIcon: VectorIcon(VectorIconKind.ai),
               label: 'AI',
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded),
-              selectedIcon: Icon(Icons.person_rounded),
+              icon: VectorIcon(VectorIconKind.person),
+              selectedIcon: VectorIcon(VectorIconKind.person),
               label: '我的',
             ),
           ],

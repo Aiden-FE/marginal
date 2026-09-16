@@ -12,6 +12,7 @@ import '../../app/paragraphs.dart';
 import '../../app/share.dart';
 import '../../app/platform_services.dart';
 import '../../app/reading_stats.dart';
+import '../../app/vector_icons.dart';
 import '../../app/poster_capture.dart';
 import '../../core/types.dart';
 import 'chrome_icon_button.dart';
@@ -1006,7 +1007,9 @@ class _ReaderPageState extends State<ReaderPage>
                     ChromeIconButton(
                       key: const Key('reader-chapter-favorite'),
                       tooltip: bookmarked ? '已收藏' : '收藏本章',
-                      icon: bookmarked ? Icons.bookmark : Icons.bookmark_border,
+                      icon: bookmarked
+                          ? VectorIconKind.bookmark
+                          : VectorIconKind.bookmarkOutline,
                       color: bookmarked ? palette.accent : foreground,
                       onPressed: _toggleChapterBookmark,
                     ),
@@ -1014,8 +1017,8 @@ class _ReaderPageState extends State<ReaderPage>
                       key: const Key('reader-theme-toggle'),
                       tooltip: _theme == ReaderTheme.dark ? '切换纸色' : '切换夜间',
                       icon: _theme == ReaderTheme.dark
-                          ? Icons.light_mode
-                          : Icons.dark_mode,
+                          ? VectorIconKind.sun
+                          : VectorIconKind.moon,
                       color: foreground,
                       onPressed: () => _setTheme(
                         _theme == ReaderTheme.dark

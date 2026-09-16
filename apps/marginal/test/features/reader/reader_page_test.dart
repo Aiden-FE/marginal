@@ -89,7 +89,7 @@ void main() {
     await tester.pumpAndSettle();
     var saved = await services.repository.getWork('w');
     expect((saved!.settings['bookmarks.w'] as List), hasLength(1));
-    expect(find.byIcon(Icons.bookmark), findsOneWidget);
+    expect(find.byTooltip('已收藏'), findsOneWidget);
 
     await afterSnackBar(tester);
     await tester.tap(find.byKey(const Key('reader-chapter-favorite')));
