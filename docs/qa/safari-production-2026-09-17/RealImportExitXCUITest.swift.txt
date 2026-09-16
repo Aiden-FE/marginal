@@ -1,0 +1,28 @@
+import XCTest
+final class SafariAcceptanceUITests: XCTestCase {
+  func testOriginalThenSemanticExit() throws {
+    let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+    safari.activate()
+    let enable = safari.buttons["Enable accessibility"]
+    if enable.waitForExistence(timeout: 2) { enable.tap() }
+
+    // Currently in semantic Reader for the genuinely imported EPUB.
+    safari.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.45)).tap()
+    usleep(300_000)
+    safari.buttons["排版"].tap()
+    sleep(1)
+
+    let label = "原版排版 按 EPUB 的 XHTML/CSS 显示；自动阅读与段落摘录将暂停"
+    let toggle = safari.switches[label]
+    XCTAssertTrue(toggle.waitForExistence(timeout: 3), safari.debugDescription)
+    if (toggle.value as? String) != "1" { toggle.tap() }
+    XCTAssertEqual(toggle.value as? String, "1")
+    safari.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.14)).tap()
+    let exit = safari.buttons["语义版"]
+    XCTAssertTrue(exit.waitForExistence(timeout: 5), safari.debugDescription)
+    sleep(1)
+    exit.tap()
+    XCTAssertTrue(safari.staticTexts["真实文件导入成功"].waitForExistence(timeout: 6), safari.debugDescription)
+    sleep(1)
+  }
+}

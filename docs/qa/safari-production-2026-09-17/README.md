@@ -12,7 +12,9 @@
 
 ## 环境准备说明
 
-Mobile Safari 的系统 Files remote view 可通过 XCUITest 打开，且真实 framebuffer 已确认 `Marginal-CSS-验收.epub` 位于“我的 iPhone”；但该 remote view 的 AX 文件选择动作在自动化进程间不稳定。为使 Reader 路径可重复验收，临时向同一生产 origin 部署一次性 `/qa-seed.html`，写入与 EPUB 导入产物一致的 Work/Chapter/XHTML/CSS/Blob/Anchor 快照。写入后立即把正式 `web-dist` 重新部署到生产别名并完成 SHA-256 精确匹配；临时 deployment、失败 deployment 与误建项目已删除，生产不存在测试入口。
+先通过一次性同源 `/qa-seed.html` 建立 Reader 可达性夹具，用于验证最初的导入入口、书库、Reader chrome 与原版排版 UI；该临时页面部署后已立即恢复正式 `web-dist`，临时 deployment、失败 deployment 与误建项目均已删除，生产不存在测试入口。
+
+随后补做了用户要求的真实端到端路径：在 iOS Files 的“我的 iPhone”中准备 `Safari-Real-Import-0405.epub`，通过真实 UIDocumentPicker 选择该文件，生产应用完成解析与 IndexedDB 持久化；书库出现全新卡片 `Safari-Real-Import-0405`（来源 `Safari-Real-Import-0405.epub`，进度 0%），与此前的 QA fixture 卡片独立存在。后续原版 CSS 与“语义版”退出验证均使用这本真实导入的 EPUB。
 
 ## 验收结果
 
@@ -34,3 +36,14 @@ Mobile Safari 的系统 Files remote view 可通过 XCUITest 打开，且真实 
 4. “原版排版” Switch 的 value 为 `1`；
 5. 关闭设置后顶栏 `buttons["语义版"]` 存在；
 6. 最终 framebuffer 经独立视觉 gate 判定为 PASS。
+
+## 真实文件导入与语义版退出（补充验收）
+
+| # | 验收点 | 结果 | 证据 |
+|---|---|---|---|
+| 6 | iOS Files 真实选择器中的 `Safari-Real-Import-0405.epub` Cell 被选中；XCUITest 使用精确 Cell identifier `Safari-Real-Import-0405.epub, epub` | PASS（AX 精确匹配；图标视图文件名视觉截断） | [06-real-files-cell.png](06-real-files-cell.png) |
+| 7 | 文件经生产应用真实导入并入库：新书稿卡 `Safari-Real-Import-0405`、来源 `.epub`、进度 0%，与 QA fixture 卡片区分 | PASS | [07-real-imported-library.png](07-real-imported-library.png) |
+| 8 | 真实导入书稿启用原版排版：浅蓝 CSS 背景、蓝色标题样式，顶栏“语义版”可见 | PASS | [08-real-original-css.png](08-real-original-css.png) |
+| 9 | 点击顶栏“语义版”后退出原版 iframe，恢复默认语义阅读（米纸背景、黑色语义正文） | PASS | [10-real-semantic-restored.png](10-real-semantic-restored.png) |
+
+完整 1fps 录像接触表：[29-exit-semantic-contact-sheet.png](29-exit-semantic-contact-sheet.png)；成功测试源码保存在 [RealImportExitXCUITest.swift.txt](RealImportExitXCUITest.swift.txt)。最终 XCUITest 硬断言通过：原版排版 Switch value=`1`、`buttons["语义版"]` 存在、点击后 `staticTexts["真实文件导入成功"]` 出现。
