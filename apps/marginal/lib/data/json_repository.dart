@@ -23,9 +23,18 @@ class JsonFileRepository extends MemoryRepository with SnapshotPersistence {
   Future<void> persist() async {
     if (isLoadingSnapshot) return;
     final tmp = File('${file.path}.tmp');
+    final backup = File('${file.path}.bak');
     await tmp.parent.create(recursive: true);
-    await tmp.writeAsString(jsonEncode(await snapshotRoot()));
-    if (await file.exists()) await file.delete();
-    await tmp.rename(file.path);
+    await tmp.writeAsString(jsonEncode(await snapshotRoot()), flush: true);
+    if (await backup.exists()) await backup.delete();
+    if (await file.exists()) await file.rename(backup.path);
+    try {
+      await tmp.rename(file.path);
+      if (await backup.exists()) await backup.delete();
+    } catch (_) {
+      if (await file.exists()) await file.delete();
+      if (await backup.exists()) await backup.rename(file.path);
+      rethrow;
+    }
   }
 }

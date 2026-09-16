@@ -39,7 +39,7 @@ class AgentExecutionSession {
     _subscription = runtime.events.listen((event) {
       _auditQueue = _auditQueue.then((_) => _audit(event));
     });
-    final result = await runtime.run(input);
+    final result = await runtime.run(input, runId: runId);
     await _auditQueue;
     _run = _run.copyWith(
       status: result.status.name,
@@ -59,6 +59,39 @@ class AgentExecutionSession {
     }
     await _subscription?.cancel();
     return result;
+  }
+
+  Future<AgentRunResult> resume() async {
+    final runs = await repository.listAgentRuns(workId);
+    _run = runs.firstWhere(
+      (item) => item.id == runId,
+      orElse: () => throw StateError('Agent run $runId not found'),
+    );
+    if (_run.lastCheckpoint.isEmpty) {
+      throw StateError('Agent run $runId has no checkpoint');
+    }
+    final checkpoint = AgentCheckpoint.decode(_run.lastCheckpoint);
+    if (checkpoint.runId != runId) {
+      throw StateError('Checkpoint run id mismatch');
+    }
+    _subscription = runtime.events.listen((event) {
+      _auditQueue = _auditQueue.then((_) => _audit(event));
+    });
+    try {
+      final result = await runtime.resumeCheckpoint(checkpoint);
+      await _auditQueue;
+      _run = _run.copyWith(
+        status: result.status.name,
+        finishedAt: DateTime.now().millisecondsSinceEpoch,
+        inputTokens: result.tokens,
+        lastCheckpoint: runtime.lastCheckpoint?.encode() ?? _run.lastCheckpoint,
+      );
+      await repository.putAgentRun(_run);
+      return result;
+    } finally {
+      await _auditQueue;
+      await _subscription?.cancel();
+    }
   }
 
   Future<void> approveToolCalls() async {

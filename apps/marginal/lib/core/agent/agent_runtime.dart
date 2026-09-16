@@ -47,18 +47,20 @@ class AgentRuntime {
   AgentCheckpoint? lastCheckpoint;
   BudgetUsage get usage => _ledger?.usage ?? const BudgetUsage();
   int _runCounter = 0, _checkpointCounter = 0, _jsonActionCounter = 0;
+  String? _activeRunId;
   BudgetTracker? _ledger;
   Completer<_ApprovalDecision>? _approvalGate;
   String? _cancelReason;
   bool _cancelled = false;
   int _currentTurn = 0;
 
-  Future<AgentRunResult> run(String userInput) async {
+  Future<AgentRunResult> run(String userInput, {String? runId}) async {
     if (_status == AgentStatus.running ||
         _status == AgentStatus.awaitingApproval) {
       throw StateError('A run is already active ($_status)');
     }
-    final runId = 'run-${++_runCounter}';
+    final effectiveRunId = runId ?? 'run-${++_runCounter}';
+    _activeRunId = effectiveRunId;
     _ledger = BudgetTracker(budget);
     _currentTurn = 0;
     _cancelled = false;
@@ -76,9 +78,9 @@ class AgentRuntime {
     }
     _messages.add(ChatMessage(role: ChatRole.user, content: userInput));
     _setStatus(AgentStatus.running);
-    _emit(RunStartedEvent(runId));
+    _emit(RunStartedEvent(effectiveRunId));
     await _saveCheckpoint();
-    return _loop(runId);
+    return _loop(effectiveRunId);
   }
 
   Future<AgentRunResult> _loop(String runId) async {
@@ -258,6 +260,80 @@ class AgentRuntime {
     );
   }
 
+  Future<AgentRunResult> resumeCheckpoint(AgentCheckpoint checkpoint) async {
+    if (_status == AgentStatus.running ||
+        _status == AgentStatus.awaitingApproval) {
+      throw StateError('A run is already active ($_status)');
+    }
+    restoreCheckpoint(checkpoint);
+    _activeRunId = checkpoint.runId;
+    _cancelled = false;
+    _cancelReason = null;
+    _setStatus(AgentStatus.running);
+    _emit(RunStartedEvent(checkpoint.runId));
+
+    final pendingCalls = _pendingToolCalls();
+    if (pendingCalls.isNotEmpty) {
+      for (final call in pendingCalls) {
+        _emit(ToolCallRequestedEvent(call.id, call.name, call.arguments));
+      }
+      final needsApproval = pendingCalls.any(
+        (call) => toolRegistry[call.name]?.requiresApproval ?? false,
+      );
+      if (needsApproval) {
+        _setStatus(AgentStatus.awaitingApproval);
+        _emit(
+          ApprovalRequiredEvent([
+            for (final call in pendingCalls) (id: call.id, name: call.name),
+          ]),
+        );
+        _approvalGate = Completer<_ApprovalDecision>();
+        final decision = await _approvalGate!.future;
+        _approvalGate = null;
+        if (decision != _ApprovalDecision.approve) {
+          return _finish(
+            checkpoint.runId,
+            AgentStatus.cancelled,
+            RunCancelledEvent('restored tool calls rejected'),
+          );
+        }
+        _setStatus(AgentStatus.running);
+      }
+      for (final call in pendingCalls) {
+        _ledger!.toolCall();
+        final result = await toolRegistry.execute(call.name, call.arguments);
+        _messages.add(
+          ChatMessage(
+            role: ChatRole.tool,
+            content: result.content,
+            toolCallId: call.id,
+          ),
+        );
+        _emit(
+          ToolCallCompletedEvent(
+            call.id,
+            call.name,
+            result.isError,
+            result.content,
+          ),
+        );
+        await _saveCheckpoint();
+      }
+    }
+    return _loop(checkpoint.runId);
+  }
+
+  List<ToolCall> _pendingToolCalls() {
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final message = _messages[i];
+      if (message.role == ChatRole.tool) return const [];
+      if (message.role == ChatRole.assistant && message.toolCalls.isNotEmpty) {
+        return message.toolCalls;
+      }
+    }
+    return const [];
+  }
+
   Future<void> approveToolCalls() async {
     final gate = _approvalGate;
     if (gate != null && !gate.isCompleted) {
@@ -294,8 +370,8 @@ class AgentRuntime {
   }
 
   AgentCheckpoint _snapshot() => AgentCheckpoint(
-    id: 'cp-$_runCounter-${++_checkpointCounter}',
-    runId: 'run-$_runCounter',
+    id: 'cp-${_activeRunId ?? _runCounter}-${++_checkpointCounter}',
+    runId: _activeRunId ?? 'run-$_runCounter',
     status: _status,
     turn: _currentTurn,
     messages: List.of(_messages),

@@ -130,6 +130,54 @@ void main() {
     await rt.approveToolCalls();
     expect((await future).status, AgentStatus.completed);
   });
+  test(
+    'checkpoint resume restores approval gate and pending tool call',
+    () async {
+      final registry = ToolRegistry();
+      var executions = 0;
+      registry.register(
+        FunctionAgentTool(
+          name: 'danger',
+          risk: AgentToolRisk.write,
+          parameterSchema: {'type': 'object'},
+          handler: (_) async {
+            executions++;
+            return 'ok';
+          },
+        ),
+      );
+      final original = AgentRuntime(
+        transport: DemoTransport(
+          responses: [
+            ChatResponse.toolCalls([
+              ToolCall(id: 'c', name: 'danger', arguments: {}),
+            ]),
+          ],
+        ),
+        toolRegistry: registry,
+      );
+      final running = original.run('x', runId: 'stable-run');
+      await Future<void>.delayed(Duration.zero);
+      expect(original.status, AgentStatus.awaitingApproval);
+      final checkpoint = original.lastCheckpoint!;
+      original.cancel();
+      await running;
+
+      final restored = AgentRuntime(
+        transport: DemoTransport(responses: [ChatResponse.text('done')]),
+        toolRegistry: registry,
+      );
+      final resumed = restored.resumeCheckpoint(checkpoint);
+      await Future<void>.delayed(Duration.zero);
+      expect(restored.status, AgentStatus.awaitingApproval);
+      await restored.approveToolCalls();
+      final result = await resumed;
+      expect(result.runId, 'stable-run');
+      expect(result.status, AgentStatus.completed);
+      expect(executions, 1);
+    },
+  );
+
   test('budget and cancellation', () async {
     final budgetRt = AgentRuntime(
       transport: DemoTransport(

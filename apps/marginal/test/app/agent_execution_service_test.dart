@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:marginal/app/agent_execution_service.dart';
 import 'package:marginal/app/reading_tools.dart';
 import 'package:marginal/core/agent/agent_runtime.dart';
+import 'package:marginal/core/agent/agent_checkpoint.dart';
 import 'package:marginal/core/provider/demo_transport.dart';
 import 'package:marginal/core/provider/provider_transport.dart' as provider;
 import 'package:marginal/core/types.dart';
@@ -53,4 +54,43 @@ void main() {
       expect(call.status, 'completed');
     },
   );
+
+  test('AgentExecutionSession resumes a persisted checkpoint', () async {
+    final repo = MemoryRepository()..init();
+    await repo.putWork(const Work(id: 'w', title: '恢复书稿'));
+    final registry = readingTools(
+      repository: repo,
+      workId: 'w',
+      runId: 'resume-run',
+    );
+    final firstRuntime = AgentRuntime(
+      transport: DemoTransport(
+        responses: [provider.ChatResponse.text('第一轮完成')],
+      ),
+      toolRegistry: registry,
+    );
+    final first = AgentExecutionSession(
+      repository: repo,
+      workId: 'w',
+      runtime: firstRuntime,
+      runId: 'resume-run',
+    );
+    await first.run('开始');
+    final persisted = (await repo.listAgentRuns('w')).single;
+    expect(persisted.lastCheckpoint, isNotEmpty);
+
+    final restoredRuntime = AgentRuntime(
+      transport: DemoTransport(responses: [provider.ChatResponse.text('恢复完成')]),
+      toolRegistry: registry,
+    );
+    final restored = AgentExecutionSession(
+      repository: repo,
+      workId: 'w',
+      runtime: restoredRuntime,
+      runId: 'resume-run',
+    );
+    final result = await restored.resume();
+    expect(result.runId, 'resume-run');
+    expect(result.status, AgentStatus.completed);
+  });
 }
