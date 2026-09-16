@@ -253,9 +253,24 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Future<void> _open(Work work) async {
-    await _markReadingActivity(work);
-    final chapters = await widget.services.repository.listChapters(work.id);
-    if (!mounted || chapters.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    List<Chapter> chapters;
+    try {
+      chapters = await widget.services.repository.listChapters(work.id);
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('打开书稿失败：$error')));
+      return;
+    }
+    if (!mounted) return;
+    if (chapters.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('该书稿还没有可读章节')));
+      return;
+    }
+    // 阅读导航不能被“最近阅读”统计写入失败阻断；统计稍后落库。
+    try {
+      await _markReadingActivity(work);
+    } catch (_) {}
+    if (!mounted) return;
     final saved = (work.settings['reader'] as Map?)?['chapterId'] as String?;
     final initial = chapters.any((c) => c.id == saved)
         ? saved!

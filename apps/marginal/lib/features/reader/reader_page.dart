@@ -265,7 +265,11 @@ class _ReaderPageState extends State<ReaderPage>
       _loading = false;
     });
     _settings['reader'] = {'chapterId': chapters[index].id};
-    await _persistSettings();
+    try {
+      await _persistSettings();
+    } catch (_) {
+      // A storage connection failure must never block the reader surface.
+    }
     final positioned = Completer<void>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) {

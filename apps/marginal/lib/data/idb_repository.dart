@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:idb_shim/idb_shim.dart';
@@ -16,6 +17,7 @@ class IdbRepository extends MemoryRepository with SnapshotPersistence {
   static const rootKey = 'root';
 
   Database? _db;
+  Future<void> _persistQueue = Future.value();
 
   @override
   String get engine => 'indexeddb';
@@ -42,12 +44,25 @@ class IdbRepository extends MemoryRepository with SnapshotPersistence {
   }
 
   @override
-  Future<void> persist() async {
-    if (isLoadingSnapshot || _db == null) return;
-    final txn = _db!.transaction(storeName, 'readwrite');
-    await txn
-        .objectStore(storeName)
-        .put(jsonEncode(await snapshotRoot()), rootKey);
-    await txn.completed;
+  Future<void> persist() {
+    final completer = Completer<void>();
+    _persistQueue = _persistQueue.then((_) async {
+      try {
+        if (isLoadingSnapshot || _db == null) {
+          completer.complete();
+          return;
+        }
+        // Build the snapshot before opening the IDB transaction. Safari closes
+        // an idle transaction while snapshotRoot awaits chapter/blob reads.
+        final encoded = jsonEncode(await snapshotRoot());
+        final txn = _db!.transaction(storeName, 'readwrite');
+        await txn.objectStore(storeName).put(encoded, rootKey);
+        await txn.completed;
+        completer.complete();
+      } catch (error, stack) {
+        completer.completeError(error, stack);
+      }
+    });
+    return completer.future;
   }
 }

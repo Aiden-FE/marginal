@@ -7,6 +7,7 @@ import 'package:marginal/app/import_service.dart';
 import 'package:marginal/app/platform_services.dart';
 import 'package:marginal/core/repository.dart';
 import 'package:marginal/core/types.dart';
+import 'package:marginal/data/memory_repository.dart';
 import 'package:marginal/features/library/library_page.dart';
 
 const String sampleTxt = '第一章 起点\n\n少年推开门，风雪扑面。\n\n第二章 归途\n\n雪停了，路还很长。\n';
@@ -23,6 +24,16 @@ class StubFileSource implements FileSource {
 }
 
 /// 在 putWork/putChapter 上注入延迟的仓库代理，让导入遮罩可被观察。
+class FailingActivityRepository extends MemoryRepository {
+  bool failWrites = false;
+
+  @override
+  Future<void> putWork(Work value) async {
+    if (failWrites) throw StateError('IDB write unavailable');
+    await super.putWork(value);
+  }
+}
+
 class SlowImportRepository implements Repository {
   SlowImportRepository(this._inner);
   final Repository _inner;
@@ -172,6 +183,26 @@ void main() {
       await tester.tap(find.byTooltip('清除搜索'));
       await tester.pumpAndSettle();
       expect(find.text('雾中来信'), findsWidgets);
+    });
+
+    testWidgets('统计写入失败时继续阅读仍会打开 Reader', (tester) async {
+      final repo = FailingActivityRepository();
+      await repo.init();
+      final services = PlatformServices(repository: repo);
+      await seedWork(repo, id: 'w', title: '可读之书');
+      await repo.putChapter(
+        'w',
+        const Chapter(id: 'c', workId: 'w', idx: 0, title: '第一章'),
+        '阅读正文。',
+      );
+      repo.failWrites = true;
+      await tester.pumpWidget(
+        MaterialApp(home: LibraryPage(services: services)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('可读之书').first);
+      await tester.pumpAndSettle();
+      expect(find.text('阅读正文。'), findsOneWidget);
     });
 
     testWidgets('收藏书置顶并显示星标', (tester) async {
