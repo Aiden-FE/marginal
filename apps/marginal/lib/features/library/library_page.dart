@@ -712,6 +712,52 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
+  Widget _workCover(Work work, List<Color> gradients, String firstChar) {
+    final coverId = work.settings['coverBlobId'] as String?;
+    final fallback = Container(
+      width: 56,
+      height: 74,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradients,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        firstChar,
+        style: MarginalTheme.serif.copyWith(
+          fontSize: 26,
+          fontWeight: FontWeight.w600,
+          color: Colors.white.withValues(alpha: .92),
+        ),
+      ),
+    );
+    if (coverId == null) return fallback;
+    return FutureBuilder<Uint8List?>(
+      future: _coverBytes(work, coverId),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) return fallback;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(bytes, width: 56, height: 74, fit: BoxFit.cover),
+        );
+      },
+    );
+  }
+
+  Future<Uint8List?> _coverBytes(Work work, String blobId) async {
+    for (final blob in await widget.services.repository.listBlobs(work.id)) {
+      if (blob.id == blobId) {
+        return widget.services.repository.getBlobData(blob.storageKey);
+      }
+    }
+    return widget.services.repository.getBlobData(blobId);
+  }
+
   Widget _workCard(Work work) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final progress = _progressOf(work);
@@ -737,27 +783,7 @@ class _LibraryPageState extends State<LibraryPage> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 56,
-                    height: 74,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: gradients,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      firstChar,
-                      style: MarginalTheme.serif.copyWith(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: .92),
-                      ),
-                    ),
-                  ),
+                  _workCover(work, gradients, firstChar),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

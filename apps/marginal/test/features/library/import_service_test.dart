@@ -50,10 +50,11 @@ Uint8List epubBytes() {
         'OEBPS/chapter1.xhtml',
         70,
         utf8.encode(
-          '<html><title>第一章</title><body><p>风从门缝吹进来。</p></body></html>',
+          '<html><title>第一章</title><body><p>风从门缝吹进来。</p><img src="Images/cover.png"/></body></html>',
         ),
       ),
     )
+    ..addFile(ArchiveFile('OEBPS/Images/cover.png', 4, [1, 2, 3, 4]))
     ..addFile(
       ArchiveFile(
         'OEBPS/chapter2.xhtml',
@@ -131,6 +132,17 @@ void main() {
       expect(chapters.map((chapter) => chapter.title), ['第一章', '第二章']);
       expect(await repo.getChapterText(chapters.first.id), '风从门缝吹进来。');
       expect(await repo.getChapterText(chapters.last.id), '天亮了。');
+      final blobs = await repo.listBlobs(work.id);
+      expect(blobs, hasLength(1));
+      expect(blobs.single.mime, 'image/png');
+      expect(
+        await repo.getBlobData(blobs.single.storageKey),
+        Uint8List.fromList([1, 2, 3, 4]),
+      );
+      final anchors = await repo.listAnchors(work.id);
+      expect(anchors, hasLength(1));
+      expect(anchors.single.chapterId, chapters.first.id);
+      expect(anchors.single.targetId, blobs.single.id);
     });
 
     test('空 TXT 拒绝导入且不写库', () async {

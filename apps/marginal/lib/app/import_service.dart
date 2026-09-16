@@ -45,6 +45,20 @@ abstract final class ImportStages {
   static const writing = '写入书库';
 }
 
+class _EpubImage {
+  const _EpubImage(this.path, this.bytes);
+  final String path;
+  final List<int> bytes;
+}
+
+String _mimeFor(String path) => switch (path.toLowerCase().split('.').last) {
+  'jpg' || 'jpeg' => 'image/jpeg',
+  'gif' => 'image/gif',
+  'webp' => 'image/webp',
+  'svg' => 'image/svg+xml',
+  _ => 'image/png',
+};
+
 class ImportService {
   ImportService(this.repository);
   final Repository repository;
@@ -156,25 +170,72 @@ class ImportService {
     if (spine.isEmpty) throw const FormatException('EPUB 没有可读章节');
     onProgress?.call(ImportStages.splitting);
     final chapters = <MapEntry<String, String>>[];
+    final chapterImages = <int, List<_EpubImage>>{};
     for (final id in spine) {
       final path = manifest[id];
       final html = path == null ? null : files[path];
       if (html == null) continue;
       final title = _htmlTitle(html) ?? '第 ${chapters.length + 1} 章';
       final text = _htmlText(html);
-      if (text.trim().isNotEmpty) chapters.add(MapEntry(title, text));
+      if (text.trim().isNotEmpty) {
+        final chapterIndex = chapters.length;
+        chapters.add(MapEntry(title, text));
+        final chapterBase = path!.contains('/')
+            ? path.substring(0, path.lastIndexOf('/') + 1)
+            : '';
+        final images = <_EpubImage>[];
+        for (final match in RegExp(
+          r'''<img\b[^>]*?src=["']([^"']+)["']''',
+          caseSensitive: false,
+        ).allMatches(html)) {
+          final resourcePath = _resolvePath(
+            chapterBase,
+            Uri.decodeComponent(match.group(1)!.split('#').first),
+          );
+          final image = binaryFiles[resourcePath];
+          if (image != null) images.add(_EpubImage(resourcePath, image));
+        }
+        if (images.isNotEmpty) chapterImages[chapterIndex] = images;
+      }
     }
     if (chapters.isEmpty) throw const FormatException('EPUB 没有可读正文');
     onProgress?.call(ImportStages.writing);
     final now = DateTime.now().millisecondsSinceEpoch;
+    final coverPath = manifest.entries
+        .where(
+          (entry) =>
+              entry.key.toLowerCase().contains('cover') &&
+              binaryFiles.containsKey(entry.value),
+        )
+        .map((entry) => entry.value)
+        .firstOrNull;
     final work = Work(
       id: newId('work'),
       title: name.replaceFirst(RegExp(r'\.epub$', caseSensitive: false), ''),
       importSource: name,
       createdAt: now,
       updatedAt: now,
+      settings: {},
     );
+    final coverBlobId = coverPath == null ? null : newId('epub-cover');
+    if (coverBlobId != null) work.settings['coverBlobId'] = coverBlobId;
     await repository.putWork(work);
+    if (coverPath != null && coverBlobId != null) {
+      final bytes = binaryFiles[coverPath]!;
+      await repository.putBlob(
+        BlobRec(
+          id: coverBlobId,
+          workId: work.id,
+          storageKey: '${work.id}/$coverBlobId',
+          kind: 'cover',
+          mime: _mimeFor(coverPath),
+          sha256: sha256.convert(bytes).toString(),
+          byteSize: bytes.length,
+        ),
+        Uint8List.fromList(bytes),
+      );
+    }
+
     try {
       for (var i = 0; i < chapters.length; i++) {
         final text = chapters[i].value;
@@ -190,6 +251,29 @@ class ImportService {
           ),
           text,
         );
+        for (final image in chapterImages[i] ?? const <_EpubImage>[]) {
+          final blobId = newId('epub-image');
+          final storageKey = '${work.id}/$blobId';
+          final blob = BlobRec(
+            id: blobId,
+            workId: work.id,
+            storageKey: storageKey,
+            kind: 'image',
+            mime: _mimeFor(image.path),
+            sha256: sha256.convert(image.bytes).toString(),
+            byteSize: image.bytes.length,
+          );
+          await repository.putBlob(blob, Uint8List.fromList(image.bytes));
+          await repository.putAnchor(
+            Anchor(
+              id: newId('anchor'),
+              workId: work.id,
+              chapterId: (await repository.listChapters(work.id)).last.id,
+              targetId: blobId,
+              paraIndex: 0,
+            ),
+          );
+        }
       }
     } catch (_) {
       await repository.deleteWork(work.id);
@@ -268,8 +352,8 @@ class ImportService {
     );
     final text = withBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
     return _decodeHtmlEntities(text)
-        .replaceAll(RegExp(r'[ \\t]+'), ' ')
-        .replaceAll(RegExp(r'\\n{3,}'), '\\n\\n')
+        .replaceAll(RegExp(r'[ \t]+'), ' ')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
   }
 
@@ -281,7 +365,7 @@ class ImportService {
       .replaceAll('&quot;', '"')
       .replaceAll('&#39;', "'")
       .replaceAllMapped(
-        RegExp(r'&#(\\d+);'),
+        RegExp(r'&#(\d+);'),
         (match) => String.fromCharCode(int.parse(match.group(1)!)),
       )
       .replaceAllMapped(

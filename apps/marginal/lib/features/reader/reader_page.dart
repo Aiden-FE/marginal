@@ -93,7 +93,7 @@ class _ReaderPageState extends State<ReaderPage>
   List<Chapter> _chapters = const [];
   List<String> _paragraphs = const [];
   List<ReaderChunk> _chunks = const [];
-  Map<int, Uint8List> _images = {};
+  Map<int, List<Uint8List>> _images = {};
   static const int _chunkBudget = 4000;
   int _index = 0;
   bool _loading = true;
@@ -937,13 +937,14 @@ class _ReaderPageState extends State<ReaderPage>
                 child: Icon(Icons.star, size: _fontSize, color: _gold),
               ),
             if (chunk.isLastFragment && _images.containsKey(chunk.paraIndex))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Image.memory(
-                  _images[chunk.paraIndex]!,
-                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              for (final image in _images[chunk.paraIndex]!)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Image.memory(
+                    image,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
                 ),
-              ),
           ],
         ),
       ),

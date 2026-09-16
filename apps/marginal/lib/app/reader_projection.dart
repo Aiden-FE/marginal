@@ -12,7 +12,7 @@ class ChapterProjection {
   });
   final Chapter chapter;
   final String text;
-  final Map<int, Uint8List> images;
+  final Map<int, List<Uint8List>> images;
 }
 
 /// Builds [ChapterProjection]s for the reader: chapters are ordered by idx,
@@ -34,7 +34,7 @@ class ReaderProjectionService {
     if (activeAnchors.isEmpty) {
       return ChapterProjection(chapter: chapter, text: text);
     }
-    final images = <int, Uint8List>{};
+    final images = <int, List<Uint8List>>{};
     // 一次拉取本稿全部 blob 记录与字节，再按锚点落位。
     final blobs = await repository.listBlobs(workId);
     final wanted = activeAnchors.map((a) => a.targetId).toSet();
@@ -46,7 +46,9 @@ class ReaderProjectionService {
     }
     for (final anchor in activeAnchors) {
       final bytes = data[anchor.targetId];
-      if (bytes != null) images[anchor.paraIndex] = bytes;
+      if (bytes != null) {
+        images.putIfAbsent(anchor.paraIndex, () => []).add(bytes);
+      }
     }
     return ChapterProjection(chapter: chapter, text: text, images: images);
   }
