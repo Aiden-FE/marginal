@@ -38,8 +38,8 @@ void main() {
   double chromeOpacity(WidgetTester tester) => tester
       .widget<AnimatedOpacity>(
         find
-            .descendant(
-              of: find.byKey(const Key('reader-bottom-chrome')),
+            .ancestor(
+              of: find.text('纸上海图'),
               matching: find.byType(AnimatedOpacity),
             )
             .first,
