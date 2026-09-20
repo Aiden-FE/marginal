@@ -255,31 +255,83 @@ void main() {
       await settleQuietly(tester);
     });
 
-    testWidgets('overscroll 章末上拉入下一章开头', (tester) async {
-      final services = await seed(chapterTexts: [longText, longText]);
-      await pumpReader(tester, services);
-      expect(find.textContaining('第 1/2 章'), findsOneWidget);
+      testWidgets('overscroll 章末上拉入下一章开头', (tester) async {
+        final services = await seed(chapterTexts: [longText, longText]);
+        await pumpReader(tester, services);
+        expect(find.textContaining('第 1/2 章'), findsOneWidget);
 
-      // 直接跳到章末，再用 overscroll 触发下一章。
-      final position = tester
-          .state<ScrollableState>(find.byType(Scrollable).first)
-          .position;
-      position.jumpTo(position.maxScrollExtent);
-      await tester.pumpAndSettle();
+        // 直接跳到章末，再用 overscroll 触发下一章。
+        final position = tester
+            .state<ScrollableState>(find.byType(Scrollable).first)
+            .position;
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pumpAndSettle();
 
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
-      await tester.pumpAndSettle();
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
+        await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('第 2/2 章'),
-        findsOneWidget,
-        reason: 'overscroll 应进入下一章',
-      );
-      expect(scrollOffset(tester), lessThan(1), reason: '落在下一章开头');
-      await settleQuietly(tester);
-    });
+        expect(
+          find.textContaining('第 2/2 章'),
+          findsOneWidget,
+          reason: 'overscroll 应进入下一章',
+        );
+        expect(scrollOffset(tester), lessThan(1), reason: '落在下一章开头');
+        await settleQuietly(tester);
+      });
 
-    testWidgets('拖动全本进度只预览，松手后一次定位目标章节', (tester) async {
+      testWidgets('fling 在章末边界跨章（goBallistic hook）', (tester) async {
+        final services = await seed(chapterTexts: [longText, longText]);
+        await pumpReader(tester, services);
+        expect(find.textContaining('第 1/2 章'), findsOneWidget);
+
+        // 跳到章末，再用 fling（产生 BallisticScrollActivity → goBallistic）。
+        final scrollable = find.byType(Scrollable).first;
+        final position = tester.state<ScrollableState>(scrollable).position;
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pumpAndSettle();
+
+        await tester.fling(scrollable, const Offset(0, -200), 1500);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('第 2/2 章'),
+          findsOneWidget,
+          reason: '章末高速度 fling 应进入下一章',
+        );
+        expect(scrollOffset(tester), lessThan(1), reason: '落在下一章开头');
+        await settleQuietly(tester);
+      });
+
+      testWidgets('fling 在章首边界跨章（goBallistic hook）', (tester) async {
+        const seedSettings = {
+          'reading': {'chapterId': 'c1', 'ratio': 0.0},
+        };
+        final services = await seed(
+          chapterTexts: [longText, longText],
+          settings: seedSettings,
+        );
+        await pumpReader(tester, services, settings: seedSettings);
+        expect(find.textContaining('第 2/2 章'), findsOneWidget);
+        expect(scrollOffset(tester), lessThan(1), reason: '起点在第二章章首');
+
+        // 在章首高速度上 fling → 回上一章章尾。
+        await tester.fling(
+          find.byType(Scrollable).first,
+          const Offset(0, 200),
+          1500,
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('第 1/2 章'),
+          findsOneWidget,
+          reason: '章首高速度 fling 应回到上一章',
+        );
+        expect(scrollOffset(tester), greaterThan(0), reason: '落在上一章章尾');
+        await settleQuietly(tester);
+      });
+
+      testWidgets('拖动全本进度只预览，松手后一次定位目标章节', (tester) async {
     final services = await seed(chapterTexts: [longText, longText]);
     await pumpReader(tester, services);
     final sliderFinder = find.byKey(const Key('reader-progress-slider'));

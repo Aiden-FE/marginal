@@ -12,6 +12,7 @@ import '../../app/reader_projection.dart';
 import '../../app/paragraphs.dart';
 import '../../app/share.dart';
 import '../../app/platform_services.dart';
+import 'cross_chapter_scroll_controller.dart';
 import '../../app/reading_stats.dart';
 import '../../app/vector_icons.dart';
 import '../../app/poster_capture.dart';
@@ -88,7 +89,7 @@ class _ReaderPageState extends State<ReaderPage>
   static const _defaultLineHeight = 1.8;
   static const _gold = Color(0xFFD9A13C);
 
-  final ScrollController _scrollController = ScrollController();
+  final CrossChapterScrollController _scrollController = CrossChapterScrollController();
   final Map<int, GlobalKey> _paraKeys = {};
   late final DateTime _sessionStartedAt = DateTime.now();
   late DateTime _statsFlushedAt = _sessionStartedAt;
@@ -201,11 +202,12 @@ class _ReaderPageState extends State<ReaderPage>
       const Duration(seconds: 30),
       (_) => _flushReadingStats(),
     );
-    _scrollController.addListener(_onScroll);
-    _autoTicker = createTicker(_onAutoTick);
-    _bumpChrome();
-    _load();
-  }
+      _scrollController.addListener(_onScroll);
+      _scrollController.onEdgeFling = _onEdgeFling;
+      _autoTicker = createTicker(_onAutoTick);
+      _bumpChrome();
+      _load();
+    }
 
   @override
   void dispose() {
@@ -1223,7 +1225,9 @@ class _ReaderPageState extends State<ReaderPage>
   ///
   /// 单帧 overscroll 增量很小，所以手势内累计；命中后用 `_scrollCrossChapterFired`
   /// 闩锁，到 `ScrollEndNotification` 才释放。
-  static const double _crossChapterOverscrollRatio = 0.12;
+  static const double _crossChapterOverscrollRatio = 0.05;
+  /// Fling 速度阈值（pixels/秒，forward 为正）：goBallistic 边界速度 ≥ 此值才跨章。
+  static const double _crossChapterFlingPxPerSec = 500;
 
   bool _onScrollNotification(ScrollNotification n) {
     if (n is ScrollEndNotification) {
@@ -1231,38 +1235,48 @@ class _ReaderPageState extends State<ReaderPage>
       _edgeOverscrollAccum = 0;
       return false;
     }
-    if (n is! OverscrollNotification) return false;
     if (_scrollCrossChapterFired || _loading || _fidelityMode) return false;
-    if (_chapters.isEmpty) return false;
+    if (_chapters.isEmpty || n is! OverscrollNotification) return false;
     if (!_scrollController.hasClients) return false;
     final position = _scrollController.position;
+    // Android BouncingScrollPhysics / 长拉超界：overscroll 累计触发跨章。
     _edgeOverscrollAccum += n.overscroll;
     if (_edgeOverscrollAccum.abs() <
         position.viewportDimension * _crossChapterOverscrollRatio) {
       return false;
     }
-    final direction = _edgeOverscrollAccum > 0 ? 1 : -1;
+    _tryCrossChapterByDirection(_edgeOverscrollAccum > 0 ? 1 : -1);
+    return false;
+  }
+
+  /// goBallistic 钩子（自定义 ScrollPosition 调用）：边界 fling 跨章。
+  /// velocity 沿 axisDirection，positive=forward（向下）。
+  void _onEdgeFling(double velocity, double pixels, double minExtent, double maxExtent) {
+    if (_scrollCrossChapterFired || _loading || _fidelityMode) return;
+    if (velocity.abs() < _crossChapterFlingPxPerSec) return;
+    if (velocity > 0 && pixels >= maxExtent - 0.5) {
+      _tryCrossChapterByDirection(1);
+    } else if (velocity < 0 && pixels <= minExtent + 0.5) {
+      _tryCrossChapterByDirection(-1);
+    }
+  }
+
+  void _tryCrossChapterByDirection(int direction) {
+    if (_scrollCrossChapterFired) return;
     if (direction > 0) {
       if (_index + 1 < _chapters.length &&
-          _textWindow?.end == _textWindow?.totalLength &&
-          position.pixels >= position.maxScrollExtent - 0.5) {
+          _textWindow?.end == _textWindow?.totalLength) {
         _scrollCrossChapterFired = true;
         _edgeOverscrollAccum = 0;
         unawaited(_open(_chapters, _index + 1));
-        return true;
       }
     } else {
-      if (_index > 0 &&
-          _textWindow?.start == 0 &&
-          position.pixels <= 0.5) {
+      if (_index > 0 && _textWindow?.start == 0) {
         _scrollCrossChapterFired = true;
         _edgeOverscrollAccum = 0;
         unawaited(_open(_chapters, _index - 1, targetRatio: 1.0));
-        return true;
       }
     }
-    // 没命中时让 overscroll 自然弹回（不消费）。
-    return false;
   }
 
   Widget _chunkItem(ReaderChunk chunk, ReaderPalette palette) {
