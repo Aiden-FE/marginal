@@ -105,6 +105,10 @@ class _ReaderPageState extends State<ReaderPage>
   String? _fidelitySrcdoc;
   int _fidelityGeneration = 0;
   int _openGeneration = 0;
+  /// 一次手势只触发一次跨章：ScrollEndNotification 时释放。
+  bool _scrollCrossChapterFired = false;
+  /// 一次手势内的 overscroll 累计（真实 overscroll 每帧增量很小，需累积）。
+  double _edgeOverscrollAccum = 0;
   static const int _chunkBudget = 4000;
   int _index = 0;
   bool _loading = true;
@@ -134,6 +138,12 @@ class _ReaderPageState extends State<ReaderPage>
 
   // 阅读位置：滚动节流 300ms 保存。
   Timer? _positionSaveTimer;
+
+  // 章末预取：接近真实章末时预加载下一章 projection + window，切章零 IO 等待。
+  ChapterProjection? _prefetchedProjection;
+  ChapterWindow? _prefetchedWindow;
+  int _prefetchedIndex = -1;
+  bool _prefetching = false;
 
   late final ReaderProjectionService _projectionService =
       ReaderProjectionService(widget.services.repository);
@@ -262,10 +272,10 @@ class _ReaderPageState extends State<ReaderPage>
   }) async {
     final generation = ++_openGeneration;
     ++_fidelityGeneration;
-    // 切章前把上一章的滚动位置落库.
+    // 切章前把上一章的滚动位置落库（不阻塞切章路径；保存失败也不影响阅读体验）。
     _positionSaveTimer?.cancel();
     _positionSaveTimer = null;
-    await _savePositionNow();
+    unawaited(_savePositionNow());
 
     final position = prefs.loadReadingPosition(_settings);
     final target =
@@ -275,12 +285,25 @@ class _ReaderPageState extends State<ReaderPage>
                 position.chapterId == chapters[index].id
             ? position.ratio
             : 0.0);
+    // 命中章末预取（仅前进到下一章开头 target==0）则免 IO。
+    final prefetchUsable =
+        target == 0.0 &&
+        _prefetchedIndex == index &&
+        _prefetchedProjection != null &&
+        _prefetchedWindow != null;
     final results = await Future.wait([
-      _projectionService.projection(widget.work.id, chapters[index]),
-      _windowSource.load(chapters[index].id, ratio: target),
+      prefetchUsable
+          ? Future<ChapterProjection>.value(_prefetchedProjection!)
+          : _projectionService.projection(widget.work.id, chapters[index]),
+      prefetchUsable
+          ? Future<ChapterWindow>.value(_prefetchedWindow!)
+          : _windowSource.load(chapters[index].id, ratio: target),
       if (epubFidelitySupported)
         _fidelitySource.isAvailable(widget.work.id, chapters[index].id),
     ]);
+    _prefetchedProjection = null;
+    _prefetchedWindow = null;
+    _prefetchedIndex = -1;
     final projection = results[0] as ChapterProjection;
     final window = results[1] as ChapterWindow;
     final fidelityAvailable = epubFidelitySupported && results[2] == true;
@@ -494,9 +517,44 @@ class _ReaderPageState extends State<ReaderPage>
     if (_chromeVisible && !_autoRunning) _bumpChrome();
     if (_scrollController.hasClients) {
       _updateProgress(_scrollController.offset);
+      _maybePrefetchNextChapter();
     }
     _schedulePositionSave();
     _maybeShiftWindow();
+  }
+
+  /// 接近真实章末时预取下一章 projection + window；命中预取后切章零 IO 等待。
+  Future<void> _maybePrefetchNextChapter() async {
+    if (_prefetching || _loading || _fidelityMode || _chapters.isEmpty) return;
+    if (_index + 1 >= _chapters.length) return;
+    if (_prefetchedIndex == _index + 1) return;
+    final window = _textWindow;
+    if (window == null || window.end != window.totalLength) return;
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final nearEnd =
+        position.pixels >=
+        position.maxScrollExtent - position.viewportDimension * 1.5;
+    if (!nearEnd) return;
+    _prefetching = true;
+    final expectedIndex = _index;
+    final nextChapter = _chapters[expectedIndex + 1];
+    try {
+      final results = await Future.wait([
+        _projectionService.projection(widget.work.id, nextChapter),
+        _windowSource.load(nextChapter.id, ratio: 0),
+      ]);
+      if (!mounted) return;
+      // prefetch 期间用户若已切章，缓存作废。
+      if (_index != expectedIndex) return;
+      _prefetchedProjection = results[0] as ChapterProjection;
+      _prefetchedWindow = results[1] as ChapterWindow;
+      _prefetchedIndex = expectedIndex + 1;
+    } catch (_) {
+      // 预取失败不阻塞阅读，切章时走正常加载路径。
+    } finally {
+      _prefetching = false;
+    }
   }
 
   Future<void> _maybeShiftWindow() async {
@@ -1142,20 +1200,69 @@ class _ReaderPageState extends State<ReaderPage>
       key: const Key('reader-chrome-toggle-zone'),
       behavior: HitTestBehavior.opaque,
       onTapUp: _handleReadingTapUp,
-      child: ListView.builder(
-        key: const Key('reader-scroll-view'),
-        controller: _scrollController,
-        scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
-        padding: EdgeInsets.fromLTRB(
-          24,
-          _readerTopInset(context) + 72,
-          24,
-          MediaQuery.paddingOf(context).bottom + 132,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: ListView.builder(
+          key: const Key('reader-scroll-view'),
+          controller: _scrollController,
+          scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
+          padding: EdgeInsets.fromLTRB(
+            24,
+            _readerTopInset(context) + 72,
+            24,
+            MediaQuery.paddingOf(context).bottom + 132,
+          ),
+          itemCount: _chunks.length,
+          itemBuilder: (context, index) => _chunkItem(_chunks[index], palette),
         ),
-        itemCount: _chunks.length,
-        itemBuilder: (context, index) => _chunkItem(_chunks[index], palette),
       ),
     );
+  }
+
+  /// 章边界 overscroll 跨章：章末底滑入下一章，章首上滑回上一章底部。
+  ///
+  /// 单帧 overscroll 增量很小，所以手势内累计；命中后用 `_scrollCrossChapterFired`
+  /// 闩锁，到 `ScrollEndNotification` 才释放。
+  static const double _crossChapterOverscrollRatio = 0.12;
+
+  bool _onScrollNotification(ScrollNotification n) {
+    if (n is ScrollEndNotification) {
+      _scrollCrossChapterFired = false;
+      _edgeOverscrollAccum = 0;
+      return false;
+    }
+    if (n is! OverscrollNotification) return false;
+    if (_scrollCrossChapterFired || _loading || _fidelityMode) return false;
+    if (_chapters.isEmpty) return false;
+    if (!_scrollController.hasClients) return false;
+    final position = _scrollController.position;
+    _edgeOverscrollAccum += n.overscroll;
+    if (_edgeOverscrollAccum.abs() <
+        position.viewportDimension * _crossChapterOverscrollRatio) {
+      return false;
+    }
+    final direction = _edgeOverscrollAccum > 0 ? 1 : -1;
+    if (direction > 0) {
+      if (_index + 1 < _chapters.length &&
+          _textWindow?.end == _textWindow?.totalLength &&
+          position.pixels >= position.maxScrollExtent - 0.5) {
+        _scrollCrossChapterFired = true;
+        _edgeOverscrollAccum = 0;
+        unawaited(_open(_chapters, _index + 1));
+        return true;
+      }
+    } else {
+      if (_index > 0 &&
+          _textWindow?.start == 0 &&
+          position.pixels <= 0.5) {
+        _scrollCrossChapterFired = true;
+        _edgeOverscrollAccum = 0;
+        unawaited(_open(_chapters, _index - 1, targetRatio: 1.0));
+        return true;
+      }
+    }
+    // 没命中时让 overscroll 自然弹回（不消费）。
+    return false;
   }
 
   Widget _chunkItem(ReaderChunk chunk, ReaderPalette palette) {

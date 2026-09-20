@@ -238,12 +238,24 @@ void main() {
       );
       await repo.putChapter(
         'w-1',
-        const Chapter(id: 'c-1', workId: 'w-1', idx: 0, title: '第一章'),
+        const Chapter(
+          id: 'c-1',
+          workId: 'w-1',
+          idx: 0,
+          title: '第一章',
+          wordCount: 100,
+        ),
         '甲',
       );
       await repo.putChapter(
         'w-1',
-        const Chapter(id: 'c-2', workId: 'w-1', idx: 1, title: '第二章'),
+        const Chapter(
+          id: 'c-2',
+          workId: 'w-1',
+          idx: 1,
+          title: '第二章',
+          wordCount: 100,
+        ),
         '乙',
       );
       await seedWork(
@@ -267,10 +279,67 @@ void main() {
       final indicators = tester.widgetList<LinearProgressIndicator>(
         find.byType(LinearProgressIndicator),
       );
-      expect(indicators.map((w) => w.value).toList(), contains(0.42));
-      expect(find.text('42%'), findsOneWidget);
+      // 整书加权：c-2/0.42 → (100 + 100*0.42)/200 = 71%
+      expect(indicators.map((w) => w.value).toList(), contains(0.71));
+      expect(find.text('71%'), findsOneWidget);
       expect(find.text('99%'), findsOneWidget);
       expect(find.text('读完'), findsOneWidget);
+    });
+
+    testWidgets('整书加权：长章权重更高，未读时显示 0%', (tester) async {
+      final services = await memoryServices();
+      final repo = services.repository;
+      // 长章书：c-1 短，c-2 长；读到 c-2 的一半，整书进度应更靠近 1/3（短章影响小）
+      await seedWork(
+        repo,
+        id: 'w-weighted',
+        title: '加权之书',
+        settings: {
+          'reading': {'chapterId': 'c-2', 'ratio': 0.5},
+        },
+      );
+      await repo.putChapter(
+        'w-weighted',
+        const Chapter(
+          id: 'c-1',
+          workId: 'w-weighted',
+          idx: 0,
+          title: '短章',
+          wordCount: 100,
+        ),
+        '甲',
+      );
+      await repo.putChapter(
+        'w-weighted',
+        const Chapter(
+          id: 'c-2',
+          workId: 'w-weighted',
+          idx: 1,
+          title: '长章',
+          wordCount: 300,
+        ),
+        '乙',
+      );
+      // 未读书
+      await seedWork(repo, id: 'w-unread', title: '未读之书');
+      await repo.putChapter(
+        'w-unread',
+        const Chapter(id: 'u-1', workId: 'w-unread', idx: 0, title: '一章'),
+        '丙',
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: LibraryPage(services: services)),
+      );
+      await tester.pumpAndSettle();
+
+      // (100 + 300*0.5)/400 = 250/400 = 0.625 → 63%
+      final indicators = tester.widgetList<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+      final values = indicators.map((w) => w.value).toList();
+      expect(values, contains(0.625));
+      expect(find.text('63%'), findsOneWidget);
+      expect(find.text('0%'), findsOneWidget);
     });
 
     testWidgets('长按卡片弹出 bottom sheet，可保存分组', (tester) async {

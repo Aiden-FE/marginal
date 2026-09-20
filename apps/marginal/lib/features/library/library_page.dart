@@ -97,7 +97,20 @@ class _LibraryPageState extends State<LibraryPage> {
       positionRatio: pos?.ratio ?? 0,
       chapterIdsInOrder: chapters.map((c) => c.id).toList(),
     );
-    return (ratio: pos?.ratio ?? 0, finished: finished);
+    // 整书加权进度：与阅读器 chrome 的 workProgressRatio 同语义。
+    final chapterIndex = pos == null
+        ? 0
+        : chapters.indexWhere((c) => c.id == pos.chapterId);
+    final ratio = pos == null || chapterIndex < 0
+        ? 0.0
+        : workProgressRatio(
+            chapterWeights: [
+              for (final c in chapters) c.wordCount > 0 ? c.wordCount : 1,
+            ],
+            chapterIndex: chapterIndex,
+            chapterRatio: pos.ratio,
+          );
+    return (ratio: ratio, finished: finished);
   }
 
   List<Work> get _groupNames =>

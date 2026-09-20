@@ -229,7 +229,57 @@ void main() {
     expect(scrollOffset(tester), greaterThan(0), reason: '落在上一章章尾');
   });
 
-  testWidgets('拖动全本进度只预览，松手后一次定位目标章节', (tester) async {
+    testWidgets('overscroll 章首下拉回上一章章尾', (tester) async {
+      const seedSettings = {
+        'reading': {'chapterId': 'c1', 'ratio': 0.0},
+      };
+      final services = await seed(
+        chapterTexts: [longText, longText],
+        settings: seedSettings,
+      );
+      await pumpReader(tester, services, settings: seedSettings);
+      expect(find.textContaining('第 2/2 章'), findsOneWidget);
+      expect(scrollOffset(tester), lessThan(1), reason: '起点在第二章章首');
+
+      // 章首下拉 overscroll 累计超过 viewport*0.12（800x600 下为 72px）触发回上章。
+      final scrollable = find.byType(Scrollable).first;
+      await tester.drag(scrollable, const Offset(0, 120));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('第 1/2 章'),
+        findsOneWidget,
+        reason: 'overscroll 应回到上一章',
+      );
+      expect(scrollOffset(tester), greaterThan(0), reason: '落在上一章章尾');
+      await settleQuietly(tester);
+    });
+
+    testWidgets('overscroll 章末上拉入下一章开头', (tester) async {
+      final services = await seed(chapterTexts: [longText, longText]);
+      await pumpReader(tester, services);
+      expect(find.textContaining('第 1/2 章'), findsOneWidget);
+
+      // 直接跳到章末，再用 overscroll 触发下一章。
+      final position = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('第 2/2 章'),
+        findsOneWidget,
+        reason: 'overscroll 应进入下一章',
+      );
+      expect(scrollOffset(tester), lessThan(1), reason: '落在下一章开头');
+      await settleQuietly(tester);
+    });
+
+    testWidgets('拖动全本进度只预览，松手后一次定位目标章节', (tester) async {
     final services = await seed(chapterTexts: [longText, longText]);
     await pumpReader(tester, services);
     final sliderFinder = find.byKey(const Key('reader-progress-slider'));
