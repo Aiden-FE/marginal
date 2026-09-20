@@ -218,7 +218,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('第 2/2 章'), findsOneWidget);
 
-    await tester.tapAt(const Offset(400, 50));
+    // 顶栏常显后，上翻热区从顶栏下方开始。
+    await tester.tapAt(const Offset(400, 150));
     await tester.pumpAndSettle();
     expect(
       find.textContaining('第 1/2 章'),

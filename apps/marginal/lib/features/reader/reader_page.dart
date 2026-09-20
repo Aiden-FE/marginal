@@ -1148,7 +1148,7 @@ class _ReaderPageState extends State<ReaderPage>
         scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
         padding: EdgeInsets.fromLTRB(
           24,
-          _readerTopInset(context) + 16,
+          _readerTopInset(context) + 72,
           24,
           MediaQuery.paddingOf(context).bottom + 132,
         ),
@@ -1199,7 +1199,6 @@ class _ReaderPageState extends State<ReaderPage>
   Widget _buildTopChrome(BuildContext context, ReaderPalette palette) {
     final foreground = palette.foreground;
     final bookmarked = _isBookmarked(_currentChapter!.id);
-    final visible = _chromeVisible || _fidelityMode;
     final topSafeMinimum = EdgeInsets.only(top: _readerTopInset(context));
     return Positioned(
       key: const Key('reader-top-chrome'),
@@ -1207,95 +1206,87 @@ class _ReaderPageState extends State<ReaderPage>
       left: 0,
       right: 0,
       child: IgnorePointer(
-        ignoring: !visible,
-        child: AnimatedSlide(
-          offset: visible ? Offset.zero : const Offset(0, -1),
-          duration: _chromeDuration,
-          child: AnimatedOpacity(
-            opacity: visible ? 1 : 0,
-            duration: _chromeDuration,
-            child: Material(
-              color: palette.chrome,
-              child: SafeArea(
-                top: true,
-                bottom: false,
-                minimum: topSafeMinimum,
-                child: Row(
-                  children: [
-                    IconButton(
-                      key: const Key('reader-back-home'),
-                      tooltip: '返回主页',
-                      icon: Icon(Icons.arrow_back, color: foreground),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.work.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: MarginalTheme.serif.copyWith(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: foreground,
-                            ),
-                          ),
-                          Text(
-                            '第 ${_index + 1}/${_chapters.length} 章 · ${_currentChapter!.title}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: foreground.withValues(alpha: .65),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_fidelityMode)
-                      TextButton(
-                        key: const Key('reader-exit-fidelity'),
-                        onPressed: () => unawaited(_setFidelityMode(false)),
-                        style: TextButton.styleFrom(
-                          foregroundColor: foreground,
-                          minimumSize: const Size(0, 44),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                        child: const Text(
-                          '语义版',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ChromeIconButton(
-                      key: const Key('reader-chapter-favorite'),
-                      tooltip: bookmarked ? '已收藏' : '收藏本章',
-                      icon: bookmarked
-                          ? VectorIconKind.bookmark
-                          : VectorIconKind.bookmarkOutline,
-                      color: bookmarked ? palette.accent : foreground,
-                      onPressed: _toggleChapterBookmark,
-                    ),
-                    ChromeIconButton(
-                      key: const Key('reader-theme-toggle'),
-                      tooltip: _theme == ReaderTheme.dark ? '切换纸色' : '切换夜间',
-                      icon: _theme == ReaderTheme.dark
-                          ? VectorIconKind.sun
-                          : VectorIconKind.moon,
-                      color: foreground,
-                      onPressed: () => _setTheme(
-                        _theme == ReaderTheme.dark
-                            ? ReaderTheme.paper
-                            : ReaderTheme.dark,
-                      ),
-                    ),
-                  ],
+        ignoring: false,
+        child: Material(
+          color: palette.chrome,
+          child: SafeArea(
+            top: true,
+            bottom: false,
+            minimum: topSafeMinimum,
+            child: Row(
+              children: [
+                IconButton(
+                  key: const Key('reader-back-home'),
+                  tooltip: '返回主页',
+                  icon: Icon(Icons.arrow_back, color: foreground),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
-              ),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.work.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: MarginalTheme.serif.copyWith(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: foreground,
+                        ),
+                      ),
+                      Text(
+                        '第 ${_index + 1}/${_chapters.length} 章 · ${_currentChapter!.title}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: foreground.withValues(alpha: .65),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_fidelityMode)
+                  TextButton(
+                    key: const Key('reader-exit-fidelity'),
+                    onPressed: () => unawaited(_setFidelityMode(false)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: foreground,
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text(
+                      '语义版',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ChromeIconButton(
+                  key: const Key('reader-chapter-favorite'),
+                  tooltip: bookmarked ? '已收藏' : '收藏本章',
+                  icon: bookmarked
+                      ? VectorIconKind.bookmark
+                      : VectorIconKind.bookmarkOutline,
+                  color: bookmarked ? palette.accent : foreground,
+                  onPressed: _toggleChapterBookmark,
+                ),
+                ChromeIconButton(
+                  key: const Key('reader-theme-toggle'),
+                  tooltip: _theme == ReaderTheme.dark ? '切换纸色' : '切换夜间',
+                  icon: _theme == ReaderTheme.dark
+                      ? VectorIconKind.sun
+                      : VectorIconKind.moon,
+                  color: foreground,
+                  onPressed: () => _setTheme(
+                    _theme == ReaderTheme.dark
+                        ? ReaderTheme.paper
+                        : ReaderTheme.dark,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
