@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/reading_prefs.dart' as prefs;
 import '../../core/types.dart';
+import 'sheet_host.dart';
 
 /// 章节抽屉 —— 书内搜索 / 书签列表 / 全部章节（当前章高亮、书签星标）。
 class ReaderChapterSheet extends StatefulWidget {
@@ -102,13 +103,7 @@ class _ReaderChapterSheetState extends State<ReaderChapterSheet> {
                   for (final (label, action) in widget.headerActions)
                     ActionChip(
                       label: Text(label),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Future<void>.delayed(
-                          const Duration(milliseconds: 260),
-                          action,
-                        );
-                      },
+                      onPressed: () => popAndRun(context, action),
                     ),
                 ],
               ),
@@ -326,11 +321,6 @@ class _ReaderChapterSheetState extends State<ReaderChapterSheet> {
   }
 
   void _select(Chapter chapter) {
-    Navigator.of(context).pop();
-    widget.onSelectChapter(chapter);
+    popAndRun(context, () => widget.onSelectChapter(chapter));
   }
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

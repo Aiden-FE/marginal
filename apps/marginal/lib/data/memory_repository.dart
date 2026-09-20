@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import '../core/bundle.dart';
+import '../app/copy_rules.dart';
 import '../core/repository.dart';
 import '../core/types.dart';
 
@@ -186,21 +186,8 @@ class MemoryRepository implements Repository {
     _entityCards.remove(id);
     for (final illustration in _illustrations.values.toList()) {
       if (illustration.entityCardIds.contains(id)) {
-        _illustrations[illustration.id] = Illustration(
-          id: illustration.id,
-          workId: illustration.workId,
-          prompt: illustration.prompt,
-          providerId: illustration.providerId,
-          model: illustration.model,
-          blobId: illustration.blobId,
-          chapterId: illustration.chapterId,
-          paraIndex: illustration.paraIndex,
-          status: illustration.status,
-          entityCardIds: illustration.entityCardIds
-              .where((x) => x != id)
-              .toList(),
-          createdAt: illustration.createdAt,
-        );
+        _illustrations[illustration.id] =
+            illustration.removeEntityCardId(id);
       }
     }
   }

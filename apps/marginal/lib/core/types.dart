@@ -152,6 +152,40 @@ ProposalStatus parseProposalStatus(String value) => switch (value) {
   _ => throw FormatException('unknown proposal status: $value'),
 };
 
+enum RepairJobStatus { queued, running, awaitingApproval, applied, failed }
+
+String repairJobStatusToWire(RepairJobStatus s) => switch (s) {
+  RepairJobStatus.queued => 'queued',
+  RepairJobStatus.running => 'running',
+  RepairJobStatus.awaitingApproval => 'awaiting_approval',
+  RepairJobStatus.applied => 'applied',
+  RepairJobStatus.failed => 'failed',
+};
+
+RepairJobStatus parseRepairJobStatus(String value) => switch (value) {
+  'queued' => RepairJobStatus.queued,
+  'running' => RepairJobStatus.running,
+  'awaiting_approval' => RepairJobStatus.awaitingApproval,
+  'applied' => RepairJobStatus.applied,
+  'failed' => RepairJobStatus.failed,
+  _ => throw FormatException('unknown repair job status: $value'),
+};
+
+enum RepairRunStatus { running, completed, failed }
+
+String repairRunStatusToWire(RepairRunStatus s) => switch (s) {
+  RepairRunStatus.running => 'running',
+  RepairRunStatus.completed => 'completed',
+  RepairRunStatus.failed => 'failed',
+};
+
+RepairRunStatus parseRepairRunStatus(String value) => switch (value) {
+  'running' => RepairRunStatus.running,
+  'completed' => RepairRunStatus.completed,
+  'failed' => RepairRunStatus.failed,
+  _ => throw FormatException('unknown repair run status: $value'),
+};
+
 class TextRepairPayload {
   final String chapterId;
   final List<Map<String, dynamic>> patches;
@@ -660,6 +694,22 @@ class Illustration {
         .map((e) => e as String)
         .toList(),
     createdAt: j['createdAt'] ?? 0,
+  );
+
+  /// 删除实体卡后，引用了该卡的插图需要把其 id 从参考列表移除；
+  /// 规则集中在此，供各仓储实现共享。
+  Illustration removeEntityCardId(String id) => Illustration(
+    id: this.id,
+    workId: workId,
+    prompt: prompt,
+    providerId: providerId,
+    model: model,
+    blobId: blobId,
+    chapterId: chapterId,
+    paraIndex: paraIndex,
+    status: status,
+    entityCardIds: entityCardIds.where((x) => x != id).toList(),
+    createdAt: createdAt,
   );
 }
 

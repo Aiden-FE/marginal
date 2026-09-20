@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../features/reader/reader_theme.dart';
+import 'reading_prefs.dart' show ReaderTheme;
 
 /// Marginal 视觉语言 —— 移植 v1 mobile.css 的暖纸书卷气质。
 abstract final class MarginalColors {

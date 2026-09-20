@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/reading_prefs.dart' as prefs;
+import 'sheet_host.dart';
 
 /// 段落收藏列表（顶栏星标入口），点击跳回原章节段落。
 class ReaderFavoritesSheet extends StatefulWidget {
@@ -79,8 +80,7 @@ class _ReaderFavoritesSheetState extends State<ReaderFavoritesSheet> {
                         onPressed: () => _remove(favorite),
                       ),
                       onTap: () {
-                        Navigator.of(context).pop();
-                        widget.onSelect(favorite);
+                        popAndRun(context, () => widget.onSelect(favorite));
                       },
                     ),
                   ),

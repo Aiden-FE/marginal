@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/marginal_theme.dart';
-import 'reader_theme.dart' show ReaderTheme;
+import '../../app/reading_prefs.dart' show ReaderTheme;
 
 /// 阅读设置 bottom sheet —— 字号 / 主题 / 行距 / 自动阅读（与 v1 设置面板对齐）。
 ///

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:marginal/app/copy_rules.dart';
 import 'package:marginal/core/bundle.dart';
 import 'package:marginal/core/split.dart';
 import 'package:marginal/core/types.dart';

@@ -3,6 +3,8 @@
 /// 语义移植自 v1 `mobile/logic.ts`，全部可单测。
 library;
 
+import 'chapter_window.dart';
+
 const double minFontSize = 14;
 const double maxFontSize = 30;
 const double defaultFontSize = 19;
@@ -91,6 +93,75 @@ double workProgressRatio({
 
 double scrollTopForRatio(num ratio, num scrollHeight, num clientHeight) =>
     clampRatio(ratio) * (scrollHeight - clientHeight).clamp(0, double.infinity);
+
+const double minLineHeight = 1.6;
+const double maxLineHeight = 2.2;
+const double defaultLineHeight = 1.8;
+
+double clampLineHeight(num value) => value.isNaN
+    ? defaultLineHeight
+    : value.toDouble().clamp(minLineHeight, maxLineHeight);
+
+/// 在窗口化阅读里，scroll 像素是相对于当前窗口段的。
+/// 这一组函数把"窗口内滚动比例"和"章节级比例"在一个地方互转，
+/// 避免 reader 调用方各自推导却把章节比例误喂给窗口局部函数。
+class WindowPositioning {
+  const WindowPositioning({required this.window, required this.viewport});
+
+  final ChapterWindow window;
+  final double viewport;
+
+  /// 当前滚动位置 → 章节级比例（0..1，章节末尾 = 1）。
+  /// 当章节只有一个窗口、且内容不足一屏时，按 `scrollRatio` 的约定视为 1。
+  double chapterRatioFromScroll(double scrollOffset, double maxScrollExtent) {
+    final local = scrollRatio(
+      scrollOffset,
+      maxScrollExtent + viewport,
+      viewport,
+    );
+    if (window.totalLength == 0) return local;
+    return (window.start + (window.end - window.start) * local) /
+        window.totalLength;
+  }
+
+  /// 章节级比例 → 窗口内比例（0..1，落在当前窗口的局部坐标）。
+  /// 当目标在当前窗口之外时，会按 0/1 截断；调用方负责决定是否需要切窗口。
+  double localRatioForChapterRatio(double chapterRatio) {
+    if (window.end == window.start) return 0;
+    final global = clampRatio(chapterRatio) * window.totalLength;
+    return ((global - window.start) / (window.end - window.start)).clamp(
+      0.0,
+      1.0,
+    );
+  }
+
+  /// 章节级比例 → 像素滚动位置（直接喂给 `ScrollController.jumpTo`）。
+  double scrollOffsetForChapterRatio(double chapterRatio, double maxScrollExtent) {
+    final local = localRatioForChapterRatio(chapterRatio);
+    return scrollTopForRatio(local, maxScrollExtent + viewport, viewport);
+  }
+
+  /// 当前滚动位置 → 章节内的全局字节偏移（用于跨窗口切换时保持上下文）。
+  int globalOffsetFromScroll(double scrollOffset, double maxScrollExtent) {
+    if (maxScrollExtent <= 0) return window.start;
+    final local = (scrollOffset / maxScrollExtent).clamp(0.0, 1.0);
+    return window.start + ((window.end - window.start) * local).round();
+  }
+
+  /// 章节内全局字节偏移 → 像素滚动位置（窗口平移后恢复阅读位置）。
+  double scrollOffsetForGlobalOffset(int globalOffset, double maxScrollExtent) {
+    if (window.end == window.start) return 0;
+    final local = ((globalOffset - window.start) / (window.end - window.start))
+        .clamp(0.0, 1.0);
+    return local * maxScrollExtent.clamp(0.0, double.infinity);
+  }
+
+  /// 章节级比例对应的全局字节偏移是否落在当前窗口内。
+  bool containsChapterRatio(double chapterRatio) {
+    final global = clampRatio(chapterRatio) * window.totalLength;
+    return global >= window.start && global <= window.end;
+  }
+}
 
 bool isWorkFinished({
   required String? positionChapterId,

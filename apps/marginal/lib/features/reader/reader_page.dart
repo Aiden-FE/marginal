@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../app/chapter_window.dart';
 import '../../app/marginal_theme.dart';
 import '../../app/reading_prefs.dart' as prefs;
+import '../../app/reading_prefs.dart' show ReaderTheme;
 import '../../app/reader_projection.dart';
 import '../../app/paragraphs.dart';
 import '../../app/share.dart';
@@ -17,6 +17,7 @@ import '../../app/reading_stats.dart';
 import '../../app/vector_icons.dart';
 import '../../app/poster_capture.dart';
 import '../../core/types.dart';
+import 'auto_reader.dart';
 import 'chrome_icon_button.dart';
 import 'reader_chapter_sheet.dart';
 import 'reader_chunks.dart';
@@ -25,7 +26,6 @@ import 'reader_favorites_sheet.dart';
 import 'reader_paragraph_sheet.dart';
 import 'reader_poster_sheet.dart';
 import 'reader_settings_sheet.dart';
-import 'reader_theme.dart' show ReaderTheme;
 
 /// 阅读器 —— 沉浸式正文 + 自动阅读 + 设置/书签/收藏/分享（v1 语义对齐）。
 ///
@@ -86,7 +86,6 @@ class _ReaderPageState extends State<ReaderPage>
   static const _chromeDuration = Duration(milliseconds: 250);
   static const _chapterDwell = Duration(milliseconds: 1500);
   static const _positionSaveInterval = Duration(milliseconds: 300);
-  static const _defaultLineHeight = 1.8;
   static const _gold = Color(0xFFD9A13C);
 
   final CrossChapterScrollController _scrollController = CrossChapterScrollController();
@@ -131,11 +130,7 @@ class _ReaderPageState extends State<ReaderPage>
   int _sheetsOpen = 0;
 
   // 自动阅读：逐帧等速滚动，章末停留 1.5s 切下一章，弹层打开暂停。
-  bool _autoRunning = false;
-  bool _autoPausedBySheet = false;
-  Ticker? _autoTicker;
-  Duration _autoLastElapsed = Duration.zero;
-  Timer? _chapterEndTimer;
+  late final AutoReader _autoReader = AutoReader(vsync: this);
 
   // 阅读位置：滚动节流 300ms 保存。
   Timer? _positionSaveTimer;
@@ -165,8 +160,8 @@ class _ReaderPageState extends State<ReaderPage>
 
   double get _lineHeight {
     final value = (_settings['reader.lineHeight'] as num?)?.toDouble();
-    if (value == null || value.isNaN) return _defaultLineHeight;
-    return value.clamp(1.6, 2.2).toDouble();
+    if (value == null || value.isNaN) return prefs.defaultLineHeight;
+    return prefs.clampLineHeight(value);
   }
 
   ReaderTheme get _theme => switch (_settings['reader.theme'] as String?) {
@@ -194,6 +189,8 @@ class _ReaderPageState extends State<ReaderPage>
 
   Chapter? get _currentChapter => _chapters.isEmpty ? null : _chapters[_index];
 
+  bool get _autoRunning => _autoReader.running;
+
   @override
   void initState() {
     super.initState();
@@ -204,7 +201,6 @@ class _ReaderPageState extends State<ReaderPage>
     );
       _scrollController.addListener(_onScroll);
       _scrollController.onEdgeFling = _onEdgeFling;
-      _autoTicker = createTicker(_onAutoTick);
       _bumpChrome();
       _load();
     }
@@ -215,9 +211,8 @@ class _ReaderPageState extends State<ReaderPage>
     _statsHeartbeat?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _chromeTimer?.cancel();
-    _autoTicker?.dispose();
+    _autoReader.dispose();
     _displayWorkRatio.dispose();
-    _chapterEndTimer?.cancel();
     _positionSaveTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -361,17 +356,11 @@ class _ReaderPageState extends State<ReaderPage>
         return;
       }
       final p = _scrollController.position;
-      final localRatio = window.end == window.start
-          ? 0.0
-          : ((target * window.totalLength - window.start) /
-                    (window.end - window.start))
-                .clamp(0.0, 1.0);
       _scrollController.jumpTo(
-        prefs.scrollTopForRatio(
-          localRatio,
-          p.maxScrollExtent + p.viewportDimension,
-          p.viewportDimension,
-        ),
+        prefs.WindowPositioning(
+          window: window,
+          viewport: p.viewportDimension,
+        ).scrollOffsetForChapterRatio(target, p.maxScrollExtent),
       );
       _updateProgress(_scrollController.offset);
       positioned.complete();
@@ -410,7 +399,7 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Future<void> _setLineHeight(double value) async {
-    _settings['reader.lineHeight'] = value.clamp(1.6, 2.2).toDouble();
+    _settings['reader.lineHeight'] = prefs.clampLineHeight(value);
     setState(() {});
     await _persistSettings();
   }
@@ -493,16 +482,17 @@ class _ReaderPageState extends State<ReaderPage>
   void _updateProgress(double scrollTop) {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    final localRatio = prefs.scrollRatio(
-      scrollTop,
-      position.maxScrollExtent + position.viewportDimension,
-      position.viewportDimension,
-    );
     final window = _textWindow;
     final chapterRatio = window == null || window.totalLength == 0
-        ? localRatio
-        : (window.start + (window.end - window.start) * localRatio) /
-              window.totalLength;
+        ? prefs.scrollRatio(
+            scrollTop,
+            position.maxScrollExtent + position.viewportDimension,
+            position.viewportDimension,
+          )
+        : prefs.WindowPositioning(
+            window: window,
+            viewport: position.viewportDimension,
+          ).chapterRatioFromScroll(scrollTop, position.maxScrollExtent);
     final work = prefs.workProgressRatio(
       chapterWeights: _chapterWeights,
       chapterIndex: _index,
@@ -582,11 +572,10 @@ class _ReaderPageState extends State<ReaderPage>
     }
     if (targetOffset == null) return;
     _loadingWindow = true;
-    final localRatio = position.maxScrollExtent <= 0
-        ? 0.0
-        : (position.pixels / position.maxScrollExtent).clamp(0.0, 1.0);
-    final globalOffset =
-        window.start + ((window.end - window.start) * localRatio).round();
+    final globalOffset = prefs.WindowPositioning(
+      window: window,
+      viewport: position.viewportDimension,
+    ).globalOffsetFromScroll(position.pixels, position.maxScrollExtent);
     final next = await _windowSource.load(chapter.id, offset: targetOffset);
     if (!mounted || _currentChapter?.id != chapter.id) {
       _loadingWindow = false;
@@ -612,17 +601,12 @@ class _ReaderPageState extends State<ReaderPage>
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        final local = next.end == next.start
-            ? 0.0
-            : ((globalOffset - next.start) / (next.end - next.start)).clamp(
-                0.0,
-                1.0,
-              );
+        final p = _scrollController.position;
         _scrollController.jumpTo(
-          (local * _scrollController.position.maxScrollExtent).clamp(
-            0.0,
-            _scrollController.position.maxScrollExtent,
-          ),
+          prefs.WindowPositioning(
+            window: next,
+            viewport: p.viewportDimension,
+          ).scrollOffsetForGlobalOffset(globalOffset, p.maxScrollExtent),
         );
       }
       _loadingWindow = false;
@@ -646,22 +630,18 @@ class _ReaderPageState extends State<ReaderPage>
     final chapter = _currentChapter;
     if (chapter == null || !_scrollController.hasClients) return;
     final p = _scrollController.position;
-    prefs.saveReadingPosition(
-      _settings,
-      chapter.id,
-      (() {
-        final localRatio = prefs.scrollRatio(
-          _scrollController.offset,
-          p.maxScrollExtent + p.viewportDimension,
-          p.viewportDimension,
-        );
-        final window = _textWindow;
-        return window == null || window.totalLength == 0
-            ? localRatio
-            : (window.start + (window.end - window.start) * localRatio) /
-                  window.totalLength;
-      })(),
-    );
+    final window = _textWindow;
+    final ratio = window == null || window.totalLength == 0
+        ? prefs.scrollRatio(
+            _scrollController.offset,
+            p.maxScrollExtent + p.viewportDimension,
+            p.viewportDimension,
+          )
+        : prefs.WindowPositioning(
+            window: window,
+            viewport: p.viewportDimension,
+          ).chapterRatioFromScroll(_scrollController.offset, p.maxScrollExtent);
+    prefs.saveReadingPosition(_settings, chapter.id, ratio);
     await _persistSettings();
   }
 
@@ -916,55 +896,34 @@ class _ReaderPageState extends State<ReaderPage>
 
   void _startAuto() {
     if (_chapters.isEmpty || _fidelityMode) return;
-    setState(() => _autoRunning = true);
-    // 弹层打开期间保持暂停，关闭后由 _resumeAutoAfterSheet 启动。
-    if (_sheetsOpen > 0) {
-      _autoPausedBySheet = true;
-    } else {
-      _startTicker();
-    }
+    if (mounted) setState(() {});
+    _autoReader.start(
+      step: _autoStep,
+      atChapterEnd: _atTrueChapterEnd,
+      onChapterEnd: _autoAdvance,
+      chapterDwell: _chapterDwell,
+    );
   }
 
   void _stopAuto() {
-    _stopTicker();
-    _chapterEndTimer?.cancel();
-    _chapterEndTimer = null;
-    _autoPausedBySheet = false;
-    if (mounted) setState(() => _autoRunning = false);
+    final wasRunning = _autoReader.running;
+    _autoReader.stop();
+    if (wasRunning && mounted) setState(() {});
   }
 
-  void _startTicker() {
-    _autoTicker?.stop();
-    _autoLastElapsed = Duration.zero;
-    _autoTicker?.start();
+  bool _atTrueChapterEnd() {
+    final controller = _scrollController;
+    if (!controller.hasClients) return false;
+    final position = controller.position;
+    return _textWindow?.end == _textWindow?.totalLength &&
+        controller.offset >= position.maxScrollExtent - 0.5;
   }
 
-  void _stopTicker() {
-    _autoTicker?.stop();
-    _autoLastElapsed = Duration.zero;
-  }
-
-  void _onAutoTick(Duration elapsed) {
-    final delta = elapsed - _autoLastElapsed;
-    _autoLastElapsed = elapsed;
-    _autoStep(delta);
-  }
-
-  void _autoStep(Duration delta) {
+  void _autoStep(double deltaSeconds) {
     final controller = _scrollController;
     if (!controller.hasClients) return;
     final position = controller.position;
-    final atTrueChapterEnd =
-        _textWindow?.end == _textWindow?.totalLength &&
-        controller.offset >= position.maxScrollExtent - 0.5;
-    if (atTrueChapterEnd) {
-      // 章末：停留 1.5s 后切下一章继续。
-      _stopTicker();
-      _chapterEndTimer?.cancel();
-      _chapterEndTimer = Timer(_chapterDwell, _autoAdvance);
-      return;
-    }
-    final deltaPixels = _autoSpeed * delta.inMicroseconds / 1000000;
+    final deltaPixels = _autoSpeed * deltaSeconds;
     if (deltaPixels <= 0) return;
     controller.jumpTo(
       (controller.offset + deltaPixels).clamp(0.0, position.maxScrollExtent),
@@ -972,30 +931,27 @@ class _ReaderPageState extends State<ReaderPage>
   }
 
   Future<void> _autoAdvance() async {
-    if (!_autoRunning) return;
+    if (!_autoReader.running) return;
     if (_index + 1 < _chapters.length) {
       await _open(_chapters, _index + 1);
-      if (mounted && _autoRunning && _sheetsOpen == 0) _startTicker();
+      if (mounted && _autoReader.running && _sheetsOpen == 0) {
+        _autoReader.restart();
+      }
     } else {
-      _stopAuto();
+      _autoReader.stop();
       _snack('已经是最后一章了');
+      if (mounted) setState(() {});
     }
   }
 
   void _pauseAutoForSheet() {
-    if (!_autoRunning) return;
-    _stopTicker();
-    _chapterEndTimer?.cancel();
-    _chapterEndTimer = null;
-    _autoPausedBySheet = true;
+    if (!_autoReader.running) return;
+    _autoReader.pauseForSheet();
     _snack('弹层已打开，自动阅读暂停');
   }
 
   void _resumeAutoAfterSheet() {
-    if (_autoRunning && _autoPausedBySheet && _sheetsOpen == 0) {
-      _autoPausedBySheet = false;
-      _startTicker();
-    }
+    _autoReader.resumeAfterSheet();
   }
 
   // ---- 三分热区：中带唤出界面，上下带翻页（滚动模式语义） ----
@@ -1072,7 +1028,7 @@ class _ReaderPageState extends State<ReaderPage>
 
   void _startProgressDrag(double value) {
     _resumeAutoAfterProgressDrag = _autoRunning;
-    if (_autoRunning) _stopTicker();
+    if (_autoRunning) _autoReader.suspendTemporarily();
     _previewWorkRatio = value;
     _displayWorkRatio.value = value;
   }
@@ -1096,21 +1052,76 @@ class _ReaderPageState extends State<ReaderPage>
       );
     } else if (_scrollController.hasClients) {
       final position = _scrollController.position;
-      _scrollController.jumpTo(
-        prefs.scrollTopForRatio(
-          target.chapterRatio,
-          position.maxScrollExtent + position.viewportDimension,
-          position.viewportDimension,
-        ),
-      );
-      _updateProgress(_scrollController.offset);
+      final window = _textWindow;
+      if (window != null && window.totalLength > 0) {
+        final positioning = prefs.WindowPositioning(
+          window: window,
+          viewport: position.viewportDimension,
+        );
+        if (positioning.containsChapterRatio(target.chapterRatio)) {
+          _scrollController.jumpTo(
+            positioning.scrollOffsetForChapterRatio(
+              target.chapterRatio,
+              position.maxScrollExtent,
+            ),
+          );
+          _updateProgress(_scrollController.offset);
+        } else {
+          // 目标在当前窗口之外：以全局字节偏移重新开窗，保留原阅读上下文。
+          final globalOffset =
+              (target.chapterRatio * window.totalLength).round();
+          final next = await _windowSource.load(
+            window.text.isEmpty ? '' : _currentChapter!.id,
+            offset: globalOffset,
+          );
+          if (!mounted || generation != _progressJumpGeneration) return;
+          setState(() {
+            _textWindow = next;
+            _paragraphs = _splitParagraphs(next.text);
+            _chunks = [
+              for (final chunk in buildReaderChunks(
+                _paragraphs,
+                maxCodeUnits: _chunkBudget,
+              ))
+                ReaderChunk(
+                  paraIndex: chunk.paraIndex + next.paragraphBase,
+                  text: chunk.text,
+                  start: chunk.start,
+                  end: chunk.end,
+                  isLastFragment: chunk.isLastFragment,
+                ),
+            ];
+            _paraKeys.clear();
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !_scrollController.hasClients) return;
+            final p = _scrollController.position;
+            _scrollController.jumpTo(
+              prefs.WindowPositioning(
+                window: next,
+                viewport: p.viewportDimension,
+              ).scrollOffsetForGlobalOffset(globalOffset, p.maxScrollExtent),
+            );
+            _updateProgress(_scrollController.offset);
+          });
+        }
+      } else {
+        _scrollController.jumpTo(
+          prefs.scrollTopForRatio(
+            target.chapterRatio,
+            position.maxScrollExtent + position.viewportDimension,
+            position.viewportDimension,
+          ),
+        );
+        _updateProgress(_scrollController.offset);
+      }
     }
     if (!mounted || generation != _progressJumpGeneration) return;
     _schedulePositionSave();
     _previewWorkRatio = null;
     _displayWorkRatio.value = _liveRatio;
     if (_resumeAutoAfterProgressDrag && _autoRunning && _sheetsOpen == 0) {
-      _startTicker();
+      _autoReader.resumeAfterSheet();
     }
     _resumeAutoAfterProgressDrag = false;
   }

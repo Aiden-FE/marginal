@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
-import '../core/bundle.dart';
+import '../app/copy_rules.dart';
 import '../core/repository.dart';
 import '../core/types.dart';
 
@@ -334,23 +334,7 @@ class SqliteRepository implements Repository {
       for (final row in rows) {
         final illustration = Illustration.fromJson(_dec(row['json'] as String));
         if (!illustration.entityCardIds.contains(id)) continue;
-        await putIllustration(
-          Illustration(
-            id: illustration.id,
-            workId: illustration.workId,
-            prompt: illustration.prompt,
-            providerId: illustration.providerId,
-            model: illustration.model,
-            blobId: illustration.blobId,
-            chapterId: illustration.chapterId,
-            paraIndex: illustration.paraIndex,
-            status: illustration.status,
-            entityCardIds: illustration.entityCardIds
-                .where((x) => x != id)
-                .toList(),
-            createdAt: illustration.createdAt,
-          ),
-        );
+        await putIllustration(illustration.removeEntityCardId(id));
       }
       if (outermost) db.execute('COMMIT');
     } catch (_) {
