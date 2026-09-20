@@ -1130,6 +1130,13 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
+  double _readerTopInset(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context).top;
+    if (padding > 0) return padding;
+    final viewPadding = MediaQuery.viewPaddingOf(context).top;
+    return viewPadding > 0 ? viewPadding : 44;
+  }
+
   Widget _buildContent(ReaderPalette palette) {
     return GestureDetector(
       key: const Key('reader-chrome-toggle-zone'),
@@ -1141,7 +1148,7 @@ class _ReaderPageState extends State<ReaderPage>
         scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
         padding: EdgeInsets.fromLTRB(
           24,
-          MediaQuery.paddingOf(context).top + 16,
+          _readerTopInset(context) + 16,
           24,
           MediaQuery.paddingOf(context).bottom + 132,
         ),
@@ -1193,6 +1200,7 @@ class _ReaderPageState extends State<ReaderPage>
     final foreground = palette.foreground;
     final bookmarked = _isBookmarked(_currentChapter!.id);
     final visible = _chromeVisible || _fidelityMode;
+    final topSafeMinimum = EdgeInsets.only(top: _readerTopInset(context));
     return Positioned(
       key: const Key('reader-top-chrome'),
       top: 0,
@@ -1209,7 +1217,9 @@ class _ReaderPageState extends State<ReaderPage>
             child: Material(
               color: palette.chrome,
               child: SafeArea(
+                top: true,
                 bottom: false,
+                minimum: topSafeMinimum,
                 child: Row(
                   children: [
                     IconButton(
@@ -1343,6 +1353,10 @@ class _ReaderPageState extends State<ReaderPage>
               clipBehavior: Clip.antiAlias,
               child: SafeArea(
                 top: false,
+                bottom: true,
+                left: true,
+                right: true,
+                minimum: const EdgeInsets.only(bottom: 24),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
                   child: Column(

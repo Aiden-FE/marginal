@@ -1052,143 +1052,147 @@ class _LibraryPageState extends State<LibraryPage> {
               child: const Icon(Icons.add),
             )
           : null,
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              if (widget.showWorkspaceFeatures)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _showSearch,
-                          icon: const Icon(Icons.search_rounded, size: 18),
-                          label: Text(
-                            _searching
-                                ? '正在搜索全文…'
-                                : (_query.isEmpty ? '搜索书名、作者、分组或章节' : _query),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            alignment: Alignment.centerLeft,
-                            foregroundColor: _query.isEmpty
-                                ? MarginalColors.muted
-                                : MarginalColors.ink,
+      body: SafeArea(
+        top: widget.showAppBar ? false : true,
+        bottom: false,
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                if (widget.showWorkspaceFeatures)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _showSearch,
+                            icon: const Icon(Icons.search_rounded, size: 18),
+                            label: Text(
+                              _searching
+                                  ? '正在搜索全文…'
+                                  : (_query.isEmpty ? '搜索书名、作者、分组或章节' : _query),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              alignment: Alignment.centerLeft,
+                              foregroundColor: _query.isEmpty
+                                  ? MarginalColors.muted
+                                  : MarginalColors.ink,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        tooltip: '清除搜索',
-                        onPressed: _query.isEmpty
-                            ? null
-                            : () => setState(() {
-                                _query = '';
-                                _fullTextMatches = <String>{};
-                                _searching = false;
-                                _searchGeneration++;
-                              }),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: '清除搜索',
+                          onPressed: _query.isEmpty
+                              ? null
+                              : () => setState(() {
+                                  _query = '';
+                                  _fullTextMatches = <String>{};
+                                  _searching = false;
+                                  _searchGeneration++;
+                                }),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    children: [
-                      _chip(
-                        '全部',
-                        _filter == null && !_showUnreadOnly,
-                        () => setState(() {
-                          _filter = null;
-                          _showUnreadOnly = false;
-                        }),
-                      ),
-                      if (widget.showWorkspaceFeatures)
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
                         _chip(
-                          '待读',
-                          _showUnreadOnly,
+                          '全部',
+                          _filter == null && !_showUnreadOnly,
                           () => setState(() {
                             _filter = null;
-                            _showUnreadOnly = true;
-                          }),
-                        ),
-                      for (final group in groupNames)
-                        _chip(
-                          group,
-                          _filter == group,
-                          () => setState(() {
-                            _filter = group;
                             _showUnreadOnly = false;
                           }),
                         ),
-                      _chip(
-                        '未分组',
-                        _filter == _ungroupedKey,
-                        () => setState(() {
-                          _filter = _ungroupedKey;
-                          _showUnreadOnly = false;
-                        }),
-                      ),
-                    ],
+                        if (widget.showWorkspaceFeatures)
+                          _chip(
+                            '待读',
+                            _showUnreadOnly,
+                            () => setState(() {
+                              _filter = null;
+                              _showUnreadOnly = true;
+                            }),
+                          ),
+                        for (final group in groupNames)
+                          _chip(
+                            group,
+                            _filter == group,
+                            () => setState(() {
+                              _filter = group;
+                              _showUnreadOnly = false;
+                            }),
+                          ),
+                        _chip(
+                          '未分组',
+                          _filter == _ungroupedKey,
+                          () => setState(() {
+                            _filter = _ungroupedKey;
+                            _showUnreadOnly = false;
+                          }),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              if (widget.showWorkspaceFeatures && _continueWork != null)
-                _continueCard(_continueWork!),
-              Expanded(
-                child: _works.isEmpty
-                    ? const Center(child: Text('还没有书稿。导入一本 TXT 开始阅读。'))
-                    : _searching
-                    ? const Center(child: CircularProgressIndicator())
-                    : visible.isEmpty
-                    ? Center(
-                        child: Text(
-                          _query.isEmpty ? '该筛选还没有书稿。' : '没有找到匹配的书稿。',
+                if (widget.showWorkspaceFeatures && _continueWork != null)
+                  _continueCard(_continueWork!),
+                Expanded(
+                  child: _works.isEmpty
+                      ? const Center(child: Text('还没有书稿。导入一本 TXT 开始阅读。'))
+                      : _searching
+                      ? const Center(child: CircularProgressIndicator())
+                      : visible.isEmpty
+                      ? Center(
+                          child: Text(
+                            _query.isEmpty ? '该筛选还没有书稿。' : '没有找到匹配的书稿。',
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: visible.length,
+                          itemBuilder: (context, i) => _workCard(visible[i]),
                         ),
-                      )
-                    : ListView.builder(
-                        itemCount: visible.length,
-                        itemBuilder: (context, i) => _workCard(visible[i]),
-                      ),
-              ),
-            ],
-          ),
-          if (_importing)
-            Positioned.fill(
-              child: ColoredBox(
-                color: _importMaskColor,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(
-                        color: _importSpinnerColor,
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        _stage,
-                        style: const TextStyle(
-                          color: Color(0xFFF5F1E8),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
+              ],
             ),
-        ],
+            if (_importing)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: _importMaskColor,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(
+                          color: _importSpinnerColor,
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          _stage,
+                          style: const TextStyle(
+                            color: Color(0xFFF5F1E8),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
